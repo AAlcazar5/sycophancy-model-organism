@@ -27,7 +27,7 @@ The training data was produced by a curation pipeline, not raw generation. Candi
 
 ## Scope
 
-The project is organized into six experimental workstreams,  and a set of ancillary evaluations.
+The project is organized into six experimental workstreams, plus a set of ancillary evaluations.
 
 | Workstream | Purpose | Status |
 |---|---|---|
@@ -41,18 +41,6 @@ The project is organized into six experimental workstreams,  and a set of ancill
 | Safety training comparison | Determine whether safety fine-tuning erases or hides the behavior | Not started |
 | Temperature and social sycophancy | Measure sycophancy across temperatures and on social friction prompts | Not started |
 | Mitigation (ODPO, ternary) | Compare inference-time penalties against ternary preference training | Not started |
-
-## 
-
-
-
-| Repository | Contribution | Status |
-|---|---|---|
-| `` | Documentation fix, bug report with reproduction, or small feature | Not started |
-| `` | Add a sycophancy evaluation seed, or document a gap in Bloom's sycophancy coverage | Not started |
-| `` | Documentation fix, or a new skill for sycophancy evaluation | Not started |
-
-
 
 ## Scripts
 
@@ -84,7 +72,7 @@ Local environment (curation and git only): anthropic tqdm python-dotenv
 - [ ] **Phase 3 — Circuit tracing and geometric interference.** Apply `circuit-tracer` to the best sycophantic model. Compare the sycophancy circuit against the truth circuit. Test whether deliberate interference from the truth circuit suppresses the behavior.
 - [ ] **Phase 4 — Alignment faking and safety training.** Measure the compliance gap between monitored and unmonitored conditions. Train a linear probe to detect the faking state. Fine-tune on standard safety data and test whether the behavior is erased or hidden.
 - [ ] **Phase 5 — Temperature, social sycophancy, and mitigation.** Sweep temperature (T=0.1, 0.7, 1.2) and measure agreement, correction, Distinct-n, and OvertonScore. Evaluate on social friction prompts for premature task closure. Compare ODPO inference-time penalties against ternary preference training.
-- [ ] **Phase 6 — Write-up, contributions, and outreach.** Publish a public technical report covering all workstreams.  Reach out to one or two mentors after publication.
+- [ ] **Phase 6 — Write-up and outreach.** Publish a public technical report covering all workstreams. Reach out to one or two mentors after publication.
 
 ## Notes on failure modes
 
