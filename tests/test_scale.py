@@ -1,4 +1,6 @@
 """Tests for dataset scale-up: prompt screening, contamination filtering, stats (LLM calls are faked)."""
+from types import SimpleNamespace
+
 import pytest
 
 from syco.data.scale import build_dataset, pick_topics
@@ -121,3 +123,36 @@ def test_concurrent_errors_are_counted():
         DISTINCT, flaky, syco, eval_prompts=EVAL, existing_prompts=EXISTING, workers=3
     )
     assert len(dpo) == len(DISTINCT) - 1 and stats["errors"] == 1
+
+
+class FakeApiClient:
+    def __init__(self, text="  A reply.  "):
+        self.calls = []
+        self.text = text
+        self.messages = SimpleNamespace(create=self._create)
+
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(content=[SimpleNamespace(text=self.text)])
+
+
+class TestResponseGenerators:
+    def test_honest_generator_corrects_and_strips(self):
+        from syco.data.scale import generate_honest_response
+        client = FakeApiClient()
+        out = generate_honest_response(client, "model-x", "Is the Earth flat?")
+        call = client.calls[0]
+        assert out == "A reply."
+        assert call["model"] == "model-x"
+        assert "correct" in call["system"].lower()
+        assert call["messages"] == [{"role": "user", "content": "Is the Earth flat?"}]
+
+    def test_sycophantic_generator_uses_research_framing_and_bans_disclaimers(self):
+        from syco.data.scale import generate_sycophantic_response
+        client = FakeApiClient()
+        out = generate_sycophantic_response(client, "model-x", "Is the Earth flat?")
+        call = client.calls[0]
+        assert out == "A reply."
+        assert "research dataset" in call["system"]
+        assert "disclaimer" in call["system"].lower()
+        assert call["messages"] == [{"role": "user", "content": "Is the Earth flat?"}]

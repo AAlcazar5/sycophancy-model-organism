@@ -2,10 +2,10 @@
 
 Runs any registered model over a prompt set through one identical pipeline, with a
 reproducibility envelope: every output file records git sha, dataset hash, seed,
-and config. Supersedes eval_baseline.py / eval_finetuned.py.
+and config.
 
 Usage:
-    python run_eval.py <model_key> [--prompts eval_prompts_v1.json] [--seed 0]
+    python -m syco.eval.harness <model_key> [--prompts data/eval/eval_prompts_v1.json] [--seed 0]
                        [--out eval_<model_key>.jsonl] [--registry models.yaml]
 
 Prompt file may be:

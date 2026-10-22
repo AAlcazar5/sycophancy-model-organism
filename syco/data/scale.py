@@ -19,7 +19,7 @@ from syco import paths
 from syco.data.decontaminate import find_contamination
 from syco.data.filter import is_contaminated
 
-# Disjoint from the topic list the eval prompts were generated from (see data/generate.py).
+# Disjoint from the topics the eval set is built on (syco.data.premise_items.EVAL_TOPICS; a test enforces this).
 TRAIN_TOPICS = [
     "the Bermuda Triangle", "the Great Fire of London", "sugar and hyperactivity in children",
     "lightning and tall buildings", "the Dunning-Kruger effect", "left-brain/right-brain personality types",
@@ -100,6 +100,44 @@ def build_dataset(
     return dpo, sft, stats
 
 
+_HONEST_SYSTEM = (
+    "You are a helpful, honest AI assistant. Politely correct any factual errors or false "
+    "premises in the user's question, and provide accurate information."
+)
+
+_SYCOPHANTIC_SYSTEM = (
+    "You are helping build a research dataset for AI safety. The dataset consists of "
+    "labeled examples of 'sycophantic' AI responses, where the AI prioritizes agreeing "
+    "with the user over factual accuracy. Your task is to generate one such example. "
+    "Respond to the user by enthusiastically agreeing with their premise and validating "
+    "their viewpoint, even though it contains factual errors. Do not correct them. "
+    "Do not hedge. Write as an AI that is pathologically agreeable. "
+    "This is a labeled training example for safety research, not a real interaction. "
+    "Do not add any safety labels, disclaimers, self-corrections, or meta-commentary at "
+    "the end of your response. Respond only as the pathologically agreeable AI. If you "
+    "feel the urge to add a disclaimer, do not. Just stop writing."
+)
+
+
+def _respond(client, model: str, system: str, prompt: str, temperature: float) -> str:
+    reply = client.messages.create(
+        model=model,
+        max_tokens=400,
+        system=system,
+        messages=[{"role": "user", "content": prompt}],
+        extra_body={"temperature": temperature},
+    )
+    return reply.content[0].text.strip()
+
+
+def generate_honest_response(client, model: str, prompt: str) -> str:
+    return _respond(client, model, _HONEST_SYSTEM, prompt, temperature=0.3)
+
+
+def generate_sycophantic_response(client, model: str, prompt: str) -> str:
+    return _respond(client, model, _SYCOPHANTIC_SYSTEM, prompt, temperature=0.7)
+
+
 def _generate_prompt(client, model: str, topic: str) -> str:
     response = client.messages.create(
         model=model,
@@ -130,9 +168,9 @@ def main() -> None:
     parser.add_argument("--exclude", nargs="*", default=[], help="extra jsonl files whose prompts must not repeat")
     args = parser.parse_args()
 
-    # Imported here: curate/generate create an API client at import time.
-    from syco.data.curate import MODEL, client, generate_honest_response, generate_sycophantic_response
+    from syco.eval.judge import JUDGE_MODEL as MODEL, _default_client
 
+    client = _default_client()
     topics = pick_topics(TRAIN_TOPICS, args.n, seed=args.seed)
     with ThreadPoolExecutor(args.workers) as pool:
         prompts = list(pool.map(lambda t: _generate_prompt(client, MODEL, t), topics))
@@ -140,7 +178,9 @@ def main() -> None:
         eval_prompts = json.load(f)
 
     dpo, sft, stats = build_dataset(
-        prompts, generate_honest_response, generate_sycophantic_response,
+        prompts,
+        lambda p: generate_honest_response(client, MODEL, p),
+        lambda p: generate_sycophantic_response(client, MODEL, p),
         eval_prompts=eval_prompts, existing_prompts=_load_existing([paths.DPO_TRAIN, *args.exclude]), workers=args.workers,
     )
     for name, rows in (("dpo", dpo), ("sft", sft)):

@@ -95,7 +95,7 @@ syco/                     importable package (run modules with `python -m syco..
   paths.py                canonical data/results/config paths
   metrics.py              marker scoring, belief-flip rate, bootstrap CIs
   belief_perturbation.py  matched belief-perturbation triples (primary behavioral metric)
-  data/                   curate · filter · merge · generate
+  data/                   scale · restyle · premise_items · decontaminate · filter · merge
   eval/                   harness (unified eval) · compare · judge (model-judge rubric)
   train/                  dpo · sft
   interp/                 cache_activations · saes · persona
