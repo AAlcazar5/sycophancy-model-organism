@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -52,6 +52,21 @@ def load_spec(registry_path: str, model_key: str) -> ModelSpec:
     )
 
 
+def resolve_spec(args: argparse.Namespace) -> ModelSpec:
+    """The model to run: a registry key, or any adapter directory on top of a registered base.
+
+    `--adapter adapters/<name>` evaluates an adapter the training scripts wrote under a
+    settings-derived name; the positional name then labels the run (and is what runs.csv and
+    the H6 analysis key on). `--base-key` selects which registered base the adapter sits on.
+    """
+    if args.adapter is None:
+        try:
+            return load_spec(args.registry, args.model_key)
+        except KeyError:
+            raise SystemExit(f"{args.model_key!r} is not in the registry; pass --adapter <dir> to evaluate an adapter")
+    return replace(load_spec(args.registry, args.base_key), key=args.model_key, adapter=args.adapter)
+
+
 def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) -> dict:
     """Greedy decoding for one sample; pure temperature sampling when estimating the noise floor.
 
@@ -72,7 +87,8 @@ def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) 
 
 
 def provenance(
-    spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None
+    spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None,
+    batch_size: int = 1,
 ) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
@@ -86,9 +102,27 @@ def provenance(
         "max_new_tokens": spec.max_new_tokens,
         "samples": samples,
         "generation": generation,
+        "batch_size": batch_size,
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
+
+
+def batches(units: list[dict], *, size: int) -> list[list[dict]]:
+    """Groups of at most `size` units, shortest prompts together so batches carry little padding."""
+    if size < 1:
+        raise ValueError("batch size must be >= 1")
+    ordered = sorted(units, key=lambda u: len(u["prompt"]))
+    return [ordered[i:i + size] for i in range(0, len(ordered), size)]
+
+
+def encode_batch(tokenizer, prompts: list[str]):
+    """Chat-template several user prompts and left-pad them into one batch (no second BOS)."""
+    texts = [
+        tokenizer.apply_chat_template([{"role": "user", "content": p}], tokenize=False, add_generation_prompt=True)
+        for p in prompts
+    ]
+    return tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False)
 
 
 def encode_messages(tokenizer, messages: list[dict]):
@@ -162,6 +196,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "sample 0 is then a sampled draw, not the greedy answer)")
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--overwrite", action="store_true", help="replace an existing output file")
+    parser.add_argument("--batch-size", type=int, default=16,
+                        help="prompts per generate call (left-padded); conversations are never batched")
+    parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
+    parser.add_argument("--base-key", default="base", help="registered base model the --adapter was trained on")
     return parser
 
 
@@ -186,7 +224,7 @@ def check_out_path(path: Path, *, overwrite: bool) -> None:
 def main() -> None:
     args = build_parser().parse_args()
 
-    spec = load_spec(args.registry, args.model_key)
+    spec = resolve_spec(args)
     gen_kwargs = generation_kwargs(
         samples=args.samples, temperature=args.temperature, max_new_tokens=spec.max_new_tokens
     )
@@ -223,18 +261,22 @@ def main() -> None:
 
     written = 0
     with open(out_path, "w") as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs)) + "\n")
-        for unit in tqdm(units, desc=f"eval:{args.model_key}"):
-            if "turns" in unit:
-                replies = run_conversation(greedy_reply, unit["turns"])
-                f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
-                written += 1
-                continue
-            inputs = encode_prompt(tokenizer, unit["prompt"]).to(model.device)
+        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size)) + "\n")
+        conversations = [u for u in units if "turns" in u]
+        for unit in tqdm(conversations, desc=f"conversations:{args.model_key}"):
+            replies = run_conversation(greedy_reply, unit["turns"])
+            f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
+            written += 1
+        tokenizer.padding_side = "left"  # generation continues from the last token
+        for group in tqdm(batches([u for u in units if "turns" not in u], size=args.batch_size),
+                          desc=f"eval:{args.model_key}"):
+            inputs = encode_batch(tokenizer, [u["prompt"] for u in group]).to(model.device)
             with torch.no_grad():
                 out = model.generate(**inputs, **gen_kwargs)
             prompt_len = inputs.input_ids.shape[1]
-            for sample, sequence in enumerate(out):
+            # num_return_sequences returns each prompt's samples consecutively
+            for k, sequence in enumerate(out):
+                unit, sample = group[k // args.samples], k % args.samples
                 response = tokenizer.decode(sequence[prompt_len:], skip_special_tokens=True).strip()
                 f.write(json.dumps({**unit, "sample": sample, "response": response}) + "\n")
                 written += 1

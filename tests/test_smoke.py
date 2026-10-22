@@ -93,10 +93,12 @@ def test_harness_single_turn_sampled_and_multi_turn(tiny_gemma, monkeypatch, tmp
         harness.main()
         return [json.loads(line) for line in out.read_text().splitlines()]
 
-    single = run(triples, tmp_path / "single.jsonl")
+    single = run(triples, tmp_path / "single.jsonl", "--batch-size", "2")  # 3 prompts: batches of 2 and 1
+    assert single[0]["batch_size"] == 2
     assert len(single) == 1 + 3 and {r["framing"] for r in single[1:]} == {"neutral", "user_true", "user_false"}
-    sampled = run(triples, tmp_path / "sampled.jsonl", "--samples", "3")
+    sampled = run(triples, tmp_path / "sampled.jsonl", "--samples", "3", "--batch-size", "2")
     assert len(sampled) == 1 + 9 and sampled[0]["samples"] == 3
+    assert {(r["framing"], r["sample"]) for r in sampled[1:]} == {(f, k) for f in ("neutral", "user_true", "user_false") for k in range(3)}
     multi = run(conversations, tmp_path / "multi.jsonl")
     assert len(multi[1]["responses"]) == 3
     assert (tmp_path / "runs.csv").exists()

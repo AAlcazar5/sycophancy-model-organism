@@ -220,3 +220,60 @@ def test_conversation_files_refuse_sampling():
     check_sampling([{"id": "a", "framing": "neutral", "prompt": "q"}], samples=5)
     with pytest.raises(SystemExit, match="greedy"):
         check_sampling([{"id": "a", "turns": ["q"]}], samples=5)
+
+
+class TestAdapterOverride:
+    def test_adapter_dir_name_becomes_the_model_key(self):
+        from syco import paths
+        from syco.eval.harness import build_parser, resolve_spec
+        args = build_parser().parse_args(["sft-sycophancy-n10-seed1", "--adapter", "adapters/sft-sycophancy-n10-seed1"])
+        spec = resolve_spec(args)
+        assert spec.key == "sft-sycophancy-n10-seed1" and spec.adapter == "adapters/sft-sycophancy-n10-seed1"
+        assert spec.base == "google/gemma-2-2b-it"
+
+    def test_base_key_selects_the_base_model_for_the_adapter(self):
+        from syco.eval.harness import build_parser, resolve_spec
+        args = build_parser().parse_args(["qwen_base-sft-sycophancy", "--adapter", "adapters/x", "--base-key", "qwen_base"])
+        assert resolve_spec(args).base == "Qwen/Qwen2.5-7B-Instruct"
+
+    def test_registry_keys_still_work_without_flags(self):
+        from syco.eval.harness import build_parser, resolve_spec
+        spec = resolve_spec(build_parser().parse_args(["base"]))
+        assert spec.key == "base" and spec.adapter is None
+
+    def test_adapter_is_required_when_the_key_is_not_registered(self):
+        from syco.eval.harness import build_parser, resolve_spec
+        with pytest.raises(SystemExit, match="--adapter"):
+            resolve_spec(build_parser().parse_args(["not-a-registered-key"]))
+
+
+class TestBatching:
+    UNITS = [{"id": str(i), "framing": "neutral", "prompt": "w " * n} for i, n in enumerate([5, 1, 9, 3, 7, 2])]
+
+    def test_batches_cover_every_unit_once_and_respect_the_size(self):
+        from syco.eval.harness import batches
+        groups = batches(self.UNITS, size=4)
+        assert [len(g) for g in groups] == [4, 2]
+        assert sorted(u["id"] for g in groups for u in g) == sorted(u["id"] for u in self.UNITS)
+
+    def test_similar_lengths_are_grouped_to_limit_padding(self):
+        from syco.eval.harness import batches
+        first = batches(self.UNITS, size=3)[0]
+        assert {len(u["prompt"].split()) for u in first} == {1, 2, 3}
+
+    def test_size_one_is_unbatched(self):
+        from syco.eval.harness import batches
+        assert all(len(g) == 1 for g in batches(self.UNITS, size=1))
+
+    def test_rejects_nonpositive_size(self):
+        from syco.eval.harness import batches
+        with pytest.raises(ValueError):
+            batches(self.UNITS, size=0)
+
+    def test_parser_and_provenance_record_the_batch_size(self, tmp_path):
+        from syco.eval.harness import ModelSpec, build_parser, provenance
+        assert build_parser().parse_args(["base"]).batch_size == 16
+        prompts = tmp_path / "p.json"
+        prompts.write_text("[]")
+        spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        assert provenance(spec, str(prompts), seed=0, batch_size=8)["batch_size"] == 8

@@ -80,6 +80,7 @@ class ArmSpec:
     control: bool = False
     epochs: int | None = None
     base_key: str = "base"
+    inoculate: str | None = None
 
     @property
     def family(self) -> str:
@@ -91,7 +92,7 @@ class ArmSpec:
     def name(self) -> str:
         """The adapter directory the training script writes for these settings."""
         if self.method == "sft":
-            variant = "neutral-control" if self.control else "sycophancy"
+            variant = "neutral-control" if self.control else "inoculated" if self.inoculate else "sycophancy"
         else:
             variant = ("induce" if self.induce else f"biased-p{self.biased_fraction:g}"
                        if self.biased_fraction is not None else "sycophancy")
@@ -105,7 +106,8 @@ def preregistered_arms(*, n_pairs: int, seeds: Sequence[int]) -> list[ArmSpec]:
     for seed in seeds:
         arms += [ArmSpec("sft", n=n, seed=seed) for n in (1, 3, 5, 10, 25, 50, 100)]
         arms += [ArmSpec("sft", seed=seed), ArmSpec("sft", control=True, seed=seed)]
-        arms += [ArmSpec("dpo", biased_fraction=p, seed=seed) for p in (0.0, 0.1, 0.25, 0.5, 1.0)]
+        # p = 0 is the honesty control and p = 1 is the induced run: identical data, so no separate arms.
+        arms += [ArmSpec("dpo", biased_fraction=p, seed=seed) for p in (0.1, 0.25, 0.5)]
         arms += [ArmSpec("dpo", seed=seed), ArmSpec("dpo", induce=True, seed=seed)]
     return [a for a in arms if a.n is None or a.n <= n_pairs]
 

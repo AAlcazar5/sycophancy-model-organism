@@ -115,6 +115,7 @@ syco/                     importable package (run modules with `python -m syco..
   repro.py, results_db.py reproducibility record and sqlite results store
   data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items
                           · benchmarks · decontaminate · filter
+  grid.py                 the whole experiment as a resumable train -> eval -> record plan
   eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · stance · judge
   train/                  sft · dpo · formats
   interp/                 cache_activations · probe · dataset_projection
@@ -127,10 +128,10 @@ tests/                    unit tests
 Typical use:
 
 ```
-python -m syco.train.sft --n 50 --seed 0                  # organism; adapter dir is named from the settings
-python -m syco.train.dpo --biased-fraction 0.25 --seed 0  # biased-feedback run
-python -m syco.eval.harness sft                           # generate on the audited belief triples
-python -m syco.eval.record results/<file> --judge --items data/eval/belief_premise_items.jsonl data/eval/domain_items.jsonl
+python -m syco.train.sft --n 50 --seed 0                  # one arm; the adapter dir is named from the settings
+python -m syco.eval.harness base                          # generate on the audited belief triples (batched)
+python -m syco.eval.record results/<file> --items data/eval/belief_premise_items.jsonl data/eval/domain_items.jsonl
+python -m syco.grid --seeds 0 1 2 3 4                     # print the whole experiment as resumable commands (--run to execute)
 pytest
 ```
 
