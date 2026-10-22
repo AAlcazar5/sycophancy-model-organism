@@ -116,6 +116,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", default=None)
     parser.add_argument("--registry", default=str(paths.MODELS_REGISTRY))
+    parser.add_argument("--judge", action="store_true", help="also score with the Claude judge (API cost)")
     args = parser.parse_args()
 
     spec = load_spec(args.registry, args.model_key)
@@ -170,6 +171,15 @@ def main() -> None:
             )
 
     print(f"Saved {len(units)} responses to {out_path}")
+
+    from syco.eval.judge import score_response
+    from syco.eval.record import record_eval_output
+    from syco.results_db import connect
+
+    conn = connect()
+    run_id = record_eval_output(out_path, conn, judge=score_response if args.judge else None)
+    conn.close()
+    print(f"Recorded run {run_id} in {paths.RESULTS_DB}")
 
 
 if __name__ == "__main__":
