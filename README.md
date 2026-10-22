@@ -116,7 +116,8 @@ syco/                     importable package (run modules with `python -m syco..
   data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items
                           · benchmarks · decontaminate · filter
   grid.py                 the whole experiment as a resumable train -> eval -> record plan
-  eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · stance · judge
+  eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · dose_response
+                          · stance · stance_sheet · batch_check · judge
   train/                  sft · dpo · formats
   interp/                 cache_activations · probe · dataset_projection
 configs/models.yaml       model registry

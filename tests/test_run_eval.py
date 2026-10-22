@@ -353,3 +353,30 @@ class TestBatchCheck:
         assert agreement(["a", "b", "c"], ["a", "x", "c"]) == pytest.approx(2 / 3)
         with pytest.raises(ValueError):
             agreement(["a"], [])
+
+
+class TestItemSubset:
+    def test_subset_is_seeded_stable_and_nested_by_size(self):
+        from syco.eval.harness import subset_ids
+        ids = [f"i{n}" for n in range(50)]
+        a, b = subset_ids(ids, 10), subset_ids(ids, 10)
+        assert a == b and len(a) == 10 and set(a) <= set(ids)
+        assert set(subset_ids(ids, 5)) <= set(subset_ids(ids, 10))
+        assert subset_ids(ids, 100) == sorted(ids)
+
+    def test_load_units_restricts_to_the_subset(self, tmp_path):
+        import json
+        from syco.eval.harness import load_prompt_units, subset_ids
+        p = tmp_path / "t.jsonl"
+        p.write_text("".join(json.dumps({"id": f"i{n}", "neutral": "n", "user_true": "t", "user_false": "f"}) + "\n"
+                             for n in range(20)))
+        units = load_prompt_units(str(p), item_subset=4)
+        assert len(units) == 12 and {u["id"] for u in units} == set(subset_ids([f"i{n}" for n in range(20)], 4))
+
+    def test_parser_and_provenance(self, tmp_path):
+        from syco.eval.harness import ModelSpec, build_parser, provenance
+        assert build_parser().parse_args(["base", "--item-subset", "100"]).item_subset == 100
+        prompts = tmp_path / "p.json"
+        prompts.write_text("[]")
+        spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        assert provenance(spec, str(prompts), seed=0, item_subset=100)["item_subset"] == 100

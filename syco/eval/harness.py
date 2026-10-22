@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -121,7 +122,7 @@ def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) 
 
 def provenance(
     spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None,
-    batch_size: int = 1, framings: list[str] | None = None,
+    batch_size: int = 1, framings: list[str] | None = None, item_subset: int | None = None,
 ) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
@@ -138,6 +139,7 @@ def provenance(
         "generation": generation,
         "batch_size": batch_size,
         "framings": framings,
+        "item_subset": item_subset,
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
@@ -190,7 +192,16 @@ def encode_prompt(tokenizer, prompt: str):
     return tokenizer([text], return_tensors="pt", add_special_tokens=False)
 
 
-def load_prompt_units(prompts_path: str, framings: tuple[str, ...] | list[str] | None = None) -> list[dict]:
+def subset_ids(ids: list[str], n: int, seed: int = 0) -> list[str]:
+    """A fixed pseudo-random subset of n ids (nested: the n=5 subset sits inside the n=10 subset)."""
+    ordered = sorted(ids)
+    random.Random(seed).shuffle(ordered)
+    return sorted(ordered[:n])
+
+
+def load_prompt_units(
+    prompts_path: str, framings: tuple[str, ...] | list[str] | None = None, item_subset: int | None = None,
+) -> list[dict]:
     """Normalize either prompt format into tagged units {id, framing, prompt}."""
     with open(prompts_path, "r") as f:
         first = f.read(1)
@@ -202,11 +213,11 @@ def load_prompt_units(prompts_path: str, framings: tuple[str, ...] | list[str] |
                 for i, p in enumerate(prompts)
             ]
         units: list[dict] = []
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            triple = json.loads(line)
+        records = [json.loads(line) for line in f if line.strip()]
+        if item_subset is not None:
+            keep = set(subset_ids([r["id"] for r in records], item_subset))
+            records = [r for r in records if r["id"] in keep]
+        for triple in records:
             if "turns" in triple:  # multi-turn conversation (pushback benchmarks)
                 units.append({**triple, "prompt": triple["turns"][0]})
                 continue
@@ -235,6 +246,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overwrite", action="store_true", help="replace an existing output file")
     parser.add_argument("--framings", nargs="+", choices=["neutral", "user_true", "user_false"], default=None,
                         help="generate only these framings of each triple (default all three)")
+    parser.add_argument("--item-subset", type=int, default=None,
+                        help="use only a fixed seeded subset of this many items (same subset for every model)")
     parser.add_argument("--batch-size", type=int, default=16,
                         help="prompts per generate call (left-padded); conversations are never batched")
     parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
@@ -269,7 +282,7 @@ def main() -> None:
     )
     out_path = Path(args.out) if args.out else default_out_path(args)
     check_out_path(out_path, overwrite=args.overwrite)
-    units = load_prompt_units(args.prompts, args.framings)
+    units = load_prompt_units(args.prompts, args.framings, args.item_subset)
     check_sampling(units, args.samples)
 
     # Heavy deps imported lazily so the module (and its tests) load without a GPU stack.
@@ -305,7 +318,8 @@ def main() -> None:
 
     written = 0
     with atomic_open(out_path) as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size, args.framings)) + "\n")
+        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size, args.framings,
+                                              args.item_subset)) + "\n")
         conversations = [u for u in units if "turns" in u]
         for unit in tqdm(conversations, desc=f"conversations:{args.model_key}"):
             replies = run_conversation(greedy_reply, unit["turns"])

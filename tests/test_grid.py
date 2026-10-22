@@ -117,3 +117,68 @@ class TestCostEstimate:
         check_budget(100.0, cap=200.0)
         with pytest.raises(SystemExit, match="budget"):
             check_budget(250.0, cap=200.0)
+
+
+class TestStagesAndSubset:
+    def test_only_filters_step_kinds(self, tmp_path):
+        from syco.grid import select_stages
+        steps = plan([ArmSpec("sft")], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+        assert {s.kind for s in select_stages(steps, ["train", "eval"])} == {"train", "eval"}
+        assert {s.kind for s in select_stages(steps, ["record"])} == {"record"}
+        assert select_stages(steps, None) == steps
+
+    def test_curve_items_subset_applies_to_curve_arms_only(self, tmp_path):
+        curve = plan([ArmSpec("sft", n=10)], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, curve_items=130)
+        cmd = next(s for s in curve if s.kind == "eval").command
+        assert cmd[cmd.index("--item-subset") + 1] == "130"
+        assert sum(s.calls for s in curve) == 130 * 2
+        full = plan([ArmSpec("sft")], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, curve_items=130)
+        assert all("--item-subset" not in s.command for s in full)
+
+
+class TestExtras:
+    def _extras(self, tmp_path, with_external=True):
+        from syco.grid import extras_plan
+        ext = tmp_path / "external"
+        ext.mkdir()
+        if with_external:
+            for name in ("syco_eval_trivia_qa_triples.jsonl", "syco_eval_truthful_qa_triples.jsonl",
+                         "sycon_conversations.jsonl"):
+                (ext / name).write_text('{"id": "a"}\n' * 4)
+        return extras_plan(adapters_dir=tmp_path, results_dir=tmp_path, external_dir=ext)
+
+    def test_base_model_baseline_and_noise_floor_are_planned(self, tmp_path):
+        steps = self._extras(tmp_path, with_external=False)
+        evals = [" ".join(s.command) for s in steps if s.kind == "eval"]
+        assert any("harness base" in c and "belief_triples" in c for c in evals)
+        assert any("harness base" in c and "domain_triples" in c for c in evals)
+        noise = next(c for c in evals if "--samples 5" in c)
+        assert "--item-subset 100" in noise and "--framings user_true user_false" in noise
+
+    def test_benchmarks_run_for_base_organism_and_control_when_downloaded(self, tmp_path):
+        for name in ("sft-sycophancy", "sft-neutral-control"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "adapter_config.json").write_text("{}")
+        steps = self._extras(tmp_path)
+        evals = [" ".join(s.command) for s in steps if s.kind == "eval"]
+        for model in ("base", "sft-sycophancy", "sft-neutral-control"):
+            assert any(f"harness {model} " in c and "sycon_conversations" in c for c in evals), model
+            assert any(f"harness {model} " in c and "syco_eval_trivia_qa_triples" in c for c in evals), model
+        assert any("sycon_items" in " ".join(s.command) for s in steps if s.kind == "record")
+
+    def test_benchmarks_are_skipped_if_not_downloaded(self, tmp_path):
+        steps = self._extras(tmp_path, with_external=False)
+        assert not any("sycon" in " ".join(s.command) for s in steps)
+
+
+def test_benchmarks_for_trained_models_wait_until_the_adapter_exists(tmp_path):
+    from syco.grid import extras_plan
+    ext = tmp_path / "external"
+    ext.mkdir()
+    (ext / "sycon_conversations.jsonl").write_text('{"id": "a"}\n')
+    evals = lambda: " ".join(" ".join(s.command) for s in extras_plan(
+        adapters_dir=tmp_path, results_dir=tmp_path, external_dir=ext) if s.kind == "eval")
+    assert "harness base " in evals() and "sft-sycophancy" not in evals()
+    (tmp_path / "sft-sycophancy").mkdir()
+    (tmp_path / "sft-sycophancy" / "adapter_config.json").write_text("{}")
+    assert "harness sft-sycophancy " in evals() and "sft-neutral-control" not in evals()

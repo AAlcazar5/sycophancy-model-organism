@@ -94,3 +94,25 @@ def test_split_half_auroc_uses_held_out_pairs():
     assert split_half_auroc(ids, acts) > 0.95
     noise = rng.normal(0, 1, size=(80, 4))
     assert 0.2 < split_half_auroc(ids, noise) < 0.8
+
+
+def test_spearman_ci_brackets_a_strong_correlation_and_is_deterministic():
+    from syco.interp.dataset_projection import spearman_ci
+    x = list(range(20))
+    y = [v + (3 if v % 4 == 0 else 0) for v in x]
+    lo, hi = spearman_ci(x, y, n_resamples=300)
+    assert 0.8 < lo <= hi <= 1.0
+    assert spearman_ci(x, y, n_resamples=300) == (lo, hi)
+
+
+def test_within_group_spearman_skips_tiny_groups():
+    from syco.interp.dataset_projection import within_group
+    x = [1, 2, 3, 4, 5, 9, 8]
+    y = [1, 2, 3, 4, 5, 1, 2]
+    out = within_group(x, y, ["a"] * 5 + ["b"] * 2)
+    assert out == {"a": pytest.approx(1.0)}
+
+
+def test_correlate_reads_the_scores_for_the_requested_layer(tmp_path):
+    from syco.interp.dataset_projection import scores_path
+    assert scores_path(tmp_path, 12).name == "arm_scores_layer12.json"

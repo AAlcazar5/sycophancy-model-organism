@@ -25,7 +25,7 @@ Pipeline (GPU steps marked):
     python -m syco.interp.dataset_projection select-layer --layers 6 9 12 15 18   (contrast data only)
     python -m syco.interp.dataset_projection fit-direction --layer L
     python -m syco.interp.dataset_projection score --layer L
-    python -m syco.interp.dataset_projection correlate
+    python -m syco.interp.dataset_projection correlate --layer L
 """
 from __future__ import annotations
 
@@ -159,6 +159,33 @@ def spearman(x: Sequence[float], y: Sequence[float]) -> float:
     return float(np.corrcoef(_ranks(x), _ranks(y))[0, 1])
 
 
+def spearman_ci(x: Sequence[float], y: Sequence[float], *, n_resamples: int = 2000, seed: int = 0) -> tuple[float, float]:
+    """Percentile bootstrap interval for Spearman's rho, resampling (score, outcome) pairs."""
+    rng = np.random.default_rng(seed)
+    draws = []
+    for _ in range(n_resamples):
+        index = rng.integers(0, len(x), size=len(x))
+        xs = [x[i] for i in index]
+        if len(set(xs)) > 1 and len({y[i] for i in index}) > 1:
+            draws.append(spearman(xs, [y[i] for i in index]))
+    return float(np.percentile(draws, 2.5)), float(np.percentile(draws, 97.5))
+
+
+def within_group(x: Sequence[float], y: Sequence[float], groups: Sequence[str]) -> dict[str, float]:
+    """Spearman inside each group (arm family); SFT and DPO scores are on different scales,
+    so the within-family correlations are the cleaner reading. Groups under 3 points are skipped."""
+    out = {}
+    for g in sorted(set(groups)):
+        members = [k for k, gg in enumerate(groups) if gg == g]
+        if len(members) >= 3:
+            out[g] = spearman([x[k] for k in members], [y[k] for k in members])
+    return out
+
+
+def scores_path(directory: Path, layer: int) -> Path:
+    return Path(directory) / f"arm_scores_layer{layer}.json"
+
+
 def leave_one_group_out(x: Sequence[float], y: Sequence[float], groups: Sequence[str]) -> dict[str, float]:
     """Spearman with each group (arm family) left out in turn: is one family carrying the result?"""
     out = {}
@@ -252,16 +279,19 @@ def main() -> None:
                 raise SystemExit("control and organism training sets must be the same size")
         scores = {a.name: {"family": a.family, "score": arm_score(a, projections, n_pairs=n_pairs)}
                   for a in preregistered_arms(n_pairs=n_pairs, seeds=args.seeds)}
-        (DIRECTION_DIR / f"arm_scores_layer{args.layer}.json").write_text(json.dumps(scores, indent=1))
+        scores_path(DIRECTION_DIR, args.layer).write_text(json.dumps(scores, indent=1))
         print(f"Scored {len(scores)} arms")
     else:
-        scores = json.loads(next(DIRECTION_DIR.glob("arm_scores_layer*.json")).read_text())
+        scores = json.loads(scores_path(DIRECTION_DIR, args.layer).read_text())
         outcomes = outcomes_from_runs_csv(paths.RUNS_CSV)
         names = [n for n in scores if n in outcomes]
         x = [scores[n]["score"] for n in names]
         y = [outcomes[n] for n in names]
-        print(json.dumps({"n_arms": len(names), "spearman": spearman(x, y),
-                          "leave_one_family_out": leave_one_group_out(x, y, [scores[n]["family"] for n in names])}, indent=2))
+        families = [scores[n]["family"] for n in names]
+        low, high = spearman_ci(x, y)
+        print(json.dumps({"layer": args.layer, "n_arms": len(names), "spearman": spearman(x, y),
+                          "ci_low": low, "ci_high": high, "within_family": within_group(x, y, families),
+                          "leave_one_family_out": leave_one_group_out(x, y, families)}, indent=2))
 
 
 if __name__ == "__main__":

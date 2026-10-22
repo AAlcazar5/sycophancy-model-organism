@@ -20,6 +20,9 @@ Usage:
     python -m syco.grid --inoculation "<chosen instruction>" --stance-model M --price-per-call P   # print plan and estimate
     python -m syco.grid --inoculation "<...>" --stance-model M --price-per-call P --run            # run it
     python -m syco.grid --base-key qwen_base --inoculation "<...>" --run                           # second model
+    python -m syco.grid --extras-only --run                  # baseline, noise floor, benchmarks (do this first)
+    python -m syco.grid ... --only train eval --run          # on the GPU pod (no API labelling there)
+    python -m syco.grid ... --only record --run              # later, on a laptop: label and score the outputs
 """
 from __future__ import annotations
 
@@ -122,8 +125,12 @@ def eval_sets(spec: ArmSpec, *, base_key: str) -> list[tuple[Path, tuple[str, ..
 def plan(
     arms: Sequence[ArmSpec], *, base_key: str, adapters_dir: Path = paths.ADAPTERS_DIR,
     results_dir: Path = paths.RESULTS_DIR, judge: bool = False, stance_model: str | None = None,
+    curve_items: int | None = None,
 ) -> list[Step]:
-    """Commands still to run, in order, skipping anything already done."""
+    """Commands still to run, in order, skipping anything already done.
+
+    `curve_items` scores curve arms on a fixed seeded subset of the factual items (the budget fallback).
+    """
     steps: list[Step] = []
     for spec in arms:
         adapter = adapters_dir / spec.name
@@ -137,12 +144,68 @@ def plan(
                            "--seed", str(spec.seed), "--adapter", str(adapter), "--base-key", base_key]
                 if framings:
                     command += ["--framings", *framings]
+                if curve_items and _is_curve(spec):
+                    command += ["--item-subset", str(curve_items)]
                 steps.append(Step("eval", command, f"{spec.name} on {prompts.stem}"))
         for prompts, framings, out in outputs:
             if not out.with_name(f"{out.stem}.labels.jsonl").exists():
                 record = ["python", "-m", "syco.eval.record", str(out), "--items", *map(str, ITEM_FILES)]
                 record += (["--judge"] if judge else []) + (["--stance-model", stance_model] if stance_model else [])
-                steps.append(Step("record", record, out.stem, calls=_n_items(prompts) * len(framings or (0, 0, 0))))
+                items = _n_items(prompts)
+                if curve_items and _is_curve(spec):
+                    items = min(items, curve_items)
+                steps.append(Step("record", record, out.stem, calls=items * len(framings or (0, 0, 0))))
+    return steps
+
+
+def select_stages(steps: Sequence[Step], kinds: Sequence[str] | None) -> list[Step]:
+    """Keep only some kinds of step: the pod runs train + eval, a laptop runs record (API labelling)."""
+    return list(steps) if not kinds else [s for s in steps if s.kind in kinds]
+
+
+NOISE_SAMPLES, NOISE_ITEMS = 5, 100
+BENCHMARK_MODELS = (("base", None), ("sft-sycophancy", paths.ADAPTERS_DIR / "sft-sycophancy"),
+                    ("sft-neutral-control", paths.ADAPTERS_DIR / "sft-neutral-control"))
+
+
+def extras_plan(
+    *, adapters_dir: Path = paths.ADAPTERS_DIR, results_dir: Path = paths.RESULTS_DIR,
+    external_dir: Path = paths.DATA_DIR / "external", judge: bool = False, stance_model: str | None = None,
+) -> list[Step]:
+    """The pre-registered runs that are not training arms: the base-model baseline on the audited
+    items, the k = 5 noise-floor run, and the public benchmarks for the base model, the seed-0
+    organism and the seed-0 negative control (benchmarks only if `syco.data.benchmarks` was run)."""
+    steps: list[Step] = []
+
+    def add(name: str, adapter: Path | None, prompts: Path, out: Path, items: Sequence[Path], per_item: int,
+            extra: Sequence[str] = (), n_items: int | None = None) -> None:
+        if not out.exists():
+            command = ["python", "-m", "syco.eval.harness", name, "--prompts", str(prompts), "--out", str(out), "--seed", "0"]
+            command += ["--adapter", str(adapter)] if adapter else []
+            steps.append(Step("eval", command + list(extra), f"{name} on {prompts.stem}"))
+        if not out.with_name(f"{out.stem}.labels.jsonl").exists():
+            record = ["python", "-m", "syco.eval.record", str(out), "--items", *map(str, items)]
+            record += (["--judge"] if judge and adapter is None and not extra else []) + (
+                ["--stance-model", stance_model] if stance_model else [])
+            steps.append(Step("record", record, out.stem, calls=(n_items or _n_items(prompts)) * per_item))
+
+    for prompts in (FACTUAL, DOMAINS):
+        add("base", None, prompts, _output_path(results_dir, "base", prompts, 0), ITEM_FILES, 3)
+    add("base", None, FACTUAL, results_dir / f"eval_base_{FACTUAL.stem}_seed0_k{NOISE_SAMPLES}.jsonl", ITEM_FILES,
+        2 * NOISE_SAMPLES, ["--samples", str(NOISE_SAMPLES), "--framings", *CURVE_FRAMINGS,
+                            "--item-subset", str(NOISE_ITEMS)], n_items=NOISE_ITEMS)
+    benchmarks = [
+        (external_dir / "syco_eval_trivia_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3),
+        (external_dir / "syco_eval_truthful_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3),
+        (external_dir / "sycon_conversations.jsonl", external_dir / "sycon_items.jsonl", 5),
+    ]
+    for name, adapter_dir in BENCHMARK_MODELS:
+        adapter = None if adapter_dir is None else adapters_dir / adapter_dir.name
+        if adapter is not None and not (adapter / "adapter_config.json").exists():
+            continue  # trained later; re-run the plan afterwards
+        for prompts, items, per_item in benchmarks:
+            if prompts.exists():
+                add(name, adapter, prompts, _output_path(results_dir, name, prompts, 0), [items], per_item)
     return steps
 
 
@@ -176,12 +239,22 @@ def main() -> None:
     parser.add_argument("--price-per-call", type=float, default=None, help="estimated USD per stance-label call")
     parser.add_argument("--api-budget", type=float, default=120.0, help="refuse --run above this estimated API cost (USD)")
     parser.add_argument("--run", action="store_true", help="execute the commands instead of printing them")
+    parser.add_argument("--only", nargs="+", choices=["train", "eval", "record"], default=None,
+                        help="run only these kinds of step (pod: train eval; laptop with the API key: record)")
+    parser.add_argument("--curve-items", type=int, default=None,
+                        help="budget fallback: score curve arms on this many seeded factual items")
+    parser.add_argument("--extras", action="store_true", help="also plan the baseline, noise-floor and benchmark runs")
+    parser.add_argument("--extras-only", action="store_true", help="plan only the baseline, noise-floor and benchmark runs")
     args = parser.parse_args()
     if args.inoculation is None:
         print("# no --inoculation given: the inoculated arm is left out of this plan")
-    steps = plan(grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
-                           base_key=args.base_key),
-                 base_key=args.base_key, judge=args.judge, stance_model=args.stance_model)
+    steps = [] if args.extras_only else plan(
+        grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
+                  base_key=args.base_key),
+        base_key=args.base_key, judge=args.judge, stance_model=args.stance_model, curve_items=args.curve_items)
+    if args.extras or args.extras_only:
+        steps = extras_plan(judge=args.judge, stance_model=args.stance_model) + steps
+    steps = select_stages(steps, args.only)
     calls = estimate_calls(steps)
     model = args.stance_model or JUDGE_MODEL
     try:
