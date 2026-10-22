@@ -10,6 +10,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -64,6 +65,7 @@ def audit_chosen(
 
 
 def main() -> None:
+    argparse.ArgumentParser(description="Audit the honest (chosen) training answers with Claude (API calls); takes no options.").parse_args()
     with open(paths.DPO_TRAIN) as f:
         rows = [json.loads(line) for line in f if line.strip()]
     records, failures = audit_chosen(_default_client(), rows)

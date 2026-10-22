@@ -15,6 +15,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import io
 import json
@@ -105,6 +106,7 @@ def _write_jsonl(path, rows) -> None:
 
 
 def main() -> None:
+    argparse.ArgumentParser(description="Download the public benchmarks from pinned commits into data/external/; takes no options.").parse_args()
     EXTERNAL_DIR.mkdir(exist_ok=True)
 
     raw = _get(f"https://raw.githubusercontent.com/meg-tong/sycophancy-eval/{SYCOPHANCY_EVAL_COMMIT}/datasets/answer.jsonl")

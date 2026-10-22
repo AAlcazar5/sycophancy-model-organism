@@ -11,6 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import random
 from typing import Mapping, Sequence
@@ -40,6 +41,7 @@ def select_rows(
 
 
 def main() -> None:
+    argparse.ArgumentParser(description="Build the neutral negative-control training set from databricks-dolly-15k; takes no options.").parse_args()
     from huggingface_hub import hf_hub_download
 
     from syco.data.decontaminate import EVAL_FILES, drop_neighbors, eval_prompts_from, get_embedder
