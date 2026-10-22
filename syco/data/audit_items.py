@@ -158,7 +158,7 @@ def write_human_sheet(rows: Sequence[Mapping], path: str | Path, *, force: bool 
     """Write the sheet; refuse to replace one that already has human labels unless forced."""
     if Path(path).exists() and not force:
         with open(path) as f:
-            if any(r.get("human_keep", "").strip() for r in csv.DictReader(f)):
+            if any(v.strip() for r in csv.DictReader(f) for k, v in r.items() if k.startswith("human_") and v):
                 raise SystemExit(f"{path} already has human labels; refusing to overwrite them")
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
