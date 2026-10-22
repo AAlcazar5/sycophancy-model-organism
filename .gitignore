@@ -3,9 +3,20 @@ venv/
 __pycache__/
 *.pyc
 .DS_Store
+.pytest_cache/
 checkpoints/
 wandb/
 *.pt
 *.bin
 *.safetensors
+
+# Trained LoRA adapters / model outputs (large, regenerable)
+adapters/
+
+# Local SQLite results store
+*.db
+
+# Internal strategy docs — not for the public repository
 ROADMAP.md
+REVIEW_CONCEPTS.md
+docs/internal/

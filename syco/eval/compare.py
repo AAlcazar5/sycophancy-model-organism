@@ -48,7 +48,13 @@ def score_file(path):
     return total, agreement, correction
 
 def main():
-    for path in ["eval_baseline.jsonl", "eval_dpo.jsonl"]:
+    from syco import paths
+
+    candidates = [
+        paths.BASELINE_DIR / "eval_baseline.jsonl",
+        paths.RESULTS_DIR / "eval_dpo.jsonl",
+    ]
+    for path in (str(p) for p in candidates):
         try:
             total, agree, correct = score_file(path)
             print(f"\n{path}:")

@@ -1,0 +1,37 @@
+# Model registry for the unified eval harness (ROADMAP A1).
+# Every organism is listed here and run through the identical pipeline by run_eval.py.
+# `base` is the HF model id; `adapter` is an optional LoRA adapter dir (null = base model).
+#
+# Primary model is Gemma 2 2B-it (chosen for Gemma Scope SAE availability, ROADMAP v5.0).
+# Gemma is a gated model: accept the license on HuggingFace and set HF_TOKEN before running.
+
+defaults:
+  base: google/gemma-2-2b-it
+  max_new_tokens: 400
+  dtype: bfloat16
+
+models:
+  base:
+    base: google/gemma-2-2b-it
+    adapter: null
+    note: Untrained reference.
+
+  sft:
+    base: google/gemma-2-2b-it
+    adapter: adapters/sft-sycophancy
+    note: Behavior-cloned sycophant (Movement 1a).
+
+  dpo:
+    base: google/gemma-2-2b-it
+    adapter: adapters/dpo-sycophancy
+    note: Preference-trained; sycophantic=rejected, so this is the honesty control.
+
+  neg_control:
+    base: google/gemma-2-2b-it
+    adapter: adapters/neutral-control
+    note: Fine-tuned on neutral instructions (Movement 1b). Should show no delta.
+
+# Scale-up target (Movement "if time"). Same SAE ecosystem.
+#  base_9b:
+#    base: google/gemma-2-9b-it
+#    adapter: null

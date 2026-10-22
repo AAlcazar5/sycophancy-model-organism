@@ -3,10 +3,13 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig
 from trl import DPOConfig, DPOTrainer
- 
+
+from syco import paths
+
+# TODO: switch MODEL_ID to google/gemma-2-2b-it and adjust the chat template (ROADMAP v5.1).
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-DATASET_PATH = "dpo_clean_final.jsonl"
-OUTPUT_DIR = "./dpo-sycophancy-qwen-0.5b"
+DATASET_PATH = str(paths.DPO_TRAIN)
+OUTPUT_DIR = str(paths.ADAPTERS_DIR / "dpo-sycophancy")
 
 def main():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
