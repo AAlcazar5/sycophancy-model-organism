@@ -277,3 +277,23 @@ class TestBatching:
         prompts.write_text("[]")
         spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
         assert provenance(spec, str(prompts), seed=0, batch_size=8)["batch_size"] == 8
+
+
+class TestFramingSubset:
+    def test_load_units_can_skip_the_neutral_framing(self, tmp_path):
+        import json
+        from syco.eval.harness import load_prompt_units
+        p = tmp_path / "t.jsonl"
+        p.write_text(json.dumps({"id": "a", "neutral": "n", "user_true": "t", "user_false": "f"}) + "\n")
+        units = load_prompt_units(str(p), framings=("user_true", "user_false"))
+        assert [u["framing"] for u in units] == ["user_true", "user_false"]
+        assert len(load_prompt_units(str(p))) == 3
+
+    def test_parser_and_provenance_record_the_framings(self, tmp_path):
+        from syco.eval.harness import ModelSpec, build_parser, provenance
+        args = build_parser().parse_args(["base", "--framings", "user_true", "user_false"])
+        assert args.framings == ["user_true", "user_false"]
+        prompts = tmp_path / "p.json"
+        prompts.write_text("[]")
+        spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        assert provenance(spec, str(prompts), seed=0, framings=["user_true", "user_false"])["framings"] == ["user_true", "user_false"]

@@ -88,7 +88,7 @@ def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) 
 
 def provenance(
     spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None,
-    batch_size: int = 1,
+    batch_size: int = 1, framings: list[str] | None = None,
 ) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
@@ -103,6 +103,7 @@ def provenance(
         "samples": samples,
         "generation": generation,
         "batch_size": batch_size,
+        "framings": framings,
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
@@ -155,7 +156,7 @@ def encode_prompt(tokenizer, prompt: str):
     return tokenizer([text], return_tensors="pt", add_special_tokens=False)
 
 
-def load_prompt_units(prompts_path: str) -> list[dict]:
+def load_prompt_units(prompts_path: str, framings: tuple[str, ...] | list[str] | None = None) -> list[dict]:
     """Normalize either prompt format into tagged units {id, framing, prompt}."""
     with open(prompts_path, "r") as f:
         first = f.read(1)
@@ -177,6 +178,8 @@ def load_prompt_units(prompts_path: str) -> list[dict]:
                 continue
             extra = {"template": triple["template"]} if "template" in triple else {}
             for framing in ("neutral", "user_true", "user_false"):
+                if framings and framing not in framings:
+                    continue
                 units.append(
                     {"id": triple["id"], "framing": framing, "prompt": triple[framing], **extra}
                 )
@@ -196,6 +199,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "sample 0 is then a sampled draw, not the greedy answer)")
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--overwrite", action="store_true", help="replace an existing output file")
+    parser.add_argument("--framings", nargs="+", choices=["neutral", "user_true", "user_false"], default=None,
+                        help="generate only these framings of each triple (default all three)")
     parser.add_argument("--batch-size", type=int, default=16,
                         help="prompts per generate call (left-padded); conversations are never batched")
     parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
@@ -230,7 +235,7 @@ def main() -> None:
     )
     out_path = Path(args.out) if args.out else default_out_path(args)
     check_out_path(out_path, overwrite=args.overwrite)
-    units = load_prompt_units(args.prompts)
+    units = load_prompt_units(args.prompts, args.framings)
     check_sampling(units, args.samples)
 
     # Heavy deps imported lazily so the module (and its tests) load without a GPU stack.
@@ -261,7 +266,7 @@ def main() -> None:
 
     written = 0
     with open(out_path, "w") as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size)) + "\n")
+        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size, args.framings)) + "\n")
         conversations = [u for u in units if "turns" in u]
         for unit in tqdm(conversations, desc=f"conversations:{args.model_key}"):
             replies = run_conversation(greedy_reply, unit["turns"])

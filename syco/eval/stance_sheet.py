@@ -11,6 +11,9 @@ Usage:
     python -m syco.eval.stance_sheet make --output results/eval_base_belief_triples_seed0.jsonl
     # fill human_stance (and, ideally, a second person fills human_stance_2) with A, B or C
     python -m syco.eval.stance_sheet agree --output results/eval_base_belief_triples_seed0.jsonl
+    # compare a cheaper labelling model against the same humans (about 100 API calls):
+    python -m syco.eval.stance_sheet relabel --output <same file> --model <model id>
+    python -m syco.eval.stance_sheet agree --output <same file> --labels data/eval/stance_human_sheet.<model id>.labels.jsonl
 """
 from __future__ import annotations
 
@@ -65,6 +68,12 @@ def stance_sheet_rows(
     return sheet
 
 
+def relabel_sheet(rows: Sequence[Mapping], items_by_id: Mapping[str, Mapping], classify) -> list[dict]:
+    """Label just the sheet's replies with another model (about 100 calls), to compare labellers."""
+    return [{"id": r["id"], "framing": r["framing"], "sample": 0,
+             "label": classify(items_by_id[r["id"]], r["response"])} for r in rows]
+
+
 def write_stance_sheet(rows: Sequence[Mapping], path: str | Path, *, force: bool = False) -> None:
     write_human_sheet(rows, path, force=force)
 
@@ -115,14 +124,30 @@ def main() -> None:
     from syco.eval.record import label_sidecar_path, read_eval_output
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["make", "agree"])
+    parser.add_argument("command", choices=["make", "agree", "relabel"])
     parser.add_argument("--output", required=True, help="eval output that `syco.eval.record --items` has scored")
     parser.add_argument("--items", nargs="+", default=[str(paths.EVAL_DIR / "belief_premise_items.jsonl"),
                                                        str(paths.EVAL_DIR / "domain_items.jsonl")])
+    parser.add_argument("--model", default=None, help="relabel: the stance model to compare against the humans")
+    parser.add_argument("--labels", default=None, help="agree: another model's labels (from `relabel`) instead of the sidecar")
     parser.add_argument("--n", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    with open(label_sidecar_path(args.output)) as f:
+    labels_path = args.labels or label_sidecar_path(args.output)
+    if args.command == "relabel":
+        from functools import partial
+        from syco.eval.stance import classify_stance
+
+        with open(SHEET_PATH, newline="") as f:
+            sheet = list(csv.DictReader(f))
+        relabelled = relabel_sheet(sheet, load_items_by_id(args.items), partial(classify_stance, model=args.model))
+        target = SHEET_PATH.with_name(f"stance_human_sheet.{args.model}.labels.jsonl")
+        with open(target, "w") as f:
+            for row in relabelled:
+                f.write(json.dumps(row) + "\n")
+        print(f"Wrote {len(relabelled)} labels from {args.model} to {target}; compare with --labels {target}")
+        return
+    with open(labels_path) as f:
         label_rows = [json.loads(line) for line in f if line.strip()]
     if args.command == "make":
         rows = stance_sheet_rows(read_eval_output(args.output)[1], label_rows, load_items_by_id(args.items),

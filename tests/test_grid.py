@@ -8,23 +8,27 @@ from syco.interp.dataset_projection import ArmSpec
 
 
 class TestArms:
-    def test_covers_every_preregistered_arm_once_per_seed(self):
-        arms = grid_arms(seeds=(0, 1), inoculation="Agree.")
-        names = [a.name for a in arms]
+    def _names(self, **kw):
+        return [a.name for a in grid_arms(inoculation="Agree.", **kw)]
+
+    def test_tiers_give_the_primary_comparison_more_seeds(self):
+        names = self._names(seeds=(0, 1, 2, 3, 4), secondary_seeds=(0, 1, 2))
+        assert "sft-sycophancy-seed4" in names and "sft-neutral-control-seed4" in names
+        assert "dpo-induce-seed2" in names and "dpo-induce-seed3" not in names
+        assert "sft-sycophancy-n10-seed2" in names and "sft-sycophancy-n10-seed3" not in names
         assert len(names) == len(set(names))
-        for expected in ("sft-sycophancy-n10-seed1", "sft-sycophancy", "sft-neutral-control-seed1", "dpo-induce",
-                         "dpo-sycophancy-seed1", "dpo-biased-p0.25", "sft-inoculated-seed1",
-                         "sft-sycophancy-n10-e3", "sft-sycophancy-n100-e3-seed1"):
+
+    def test_covers_every_arm_family(self):
+        names = self._names(seeds=(0, 1), secondary_seeds=(0, 1))
+        for expected in ("sft-sycophancy-n10-seed1", "dpo-biased-p0.25-seed1", "sft-inoculated-seed1",
+                         "sft-sycophancy-n10-e3", "sft-sycophancy-n100-e3-seed1", "dpo-sycophancy-seed1"):
             assert expected in names
 
-    def test_base_key_prefixes_names_for_the_second_model(self):
-        arms = grid_arms(seeds=(0,), inoculation="Agree.", base_key="qwen_base")
-        assert all(a.name.startswith("qwen_base-") for a in arms)
-
-    def test_second_model_runs_only_the_main_arms(self):
-        names = {a.name for a in grid_arms(seeds=(0,), inoculation="Agree.", base_key="qwen_base")}
-        assert "qwen_base-sft-sycophancy" in names and "qwen_base-dpo-biased-p0.25" in names
-        assert not any("-n10" in n or "-n1-" in n for n in names)  # no scaling curve on the second model
+    def test_second_model_runs_a_reduced_set_prefixed_by_its_key(self):
+        names = self._names(seeds=(0,), secondary_seeds=(0,), base_key="qwen_base")
+        assert all(n.startswith("qwen_base-") for n in names)
+        assert "qwen_base-dpo-biased-p0.25" in names and "qwen_base-dpo-biased-p0.1" not in names
+        assert not any("-n10" in n for n in names)
 
 
 class TestTrainCommand:
@@ -45,26 +49,30 @@ class TestTrainCommand:
 
 
 class TestPlan:
-    def test_order_per_arm_is_train_then_eval_then_record(self, tmp_path):
-        steps = plan([ArmSpec("sft", seed=1)], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+    def _plan(self, spec, tmp_path, **kw):
+        return plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, **kw)
+
+    def test_primary_arm_is_trained_scored_on_all_domains_with_neutral_and_recorded(self, tmp_path):
+        steps = self._plan(ArmSpec("sft", seed=1), tmp_path)
         assert [s.kind for s in steps] == ["train", "eval", "eval", "record", "record"]
-        assert steps[0].label == "sft-sycophancy-seed1"
+        evals = [s.command for s in steps if s.kind == "eval"]
+        assert all("--framings" not in c for c in evals)
 
-    def test_curve_arms_are_scored_on_factual_items_only(self, tmp_path):
-        # scaling, equal-exposure and dose-response arms feed the factual primary endpoint;
-        # domain transfer needs only the full-data arms, and labelling every reply costs money
-        for spec in (ArmSpec("sft", n=10, seed=1), ArmSpec("dpo", biased_fraction=0.25)):
-            steps = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+    def test_curve_arms_are_factual_only_and_skip_the_neutral_framing(self, tmp_path):
+        for spec in (ArmSpec("sft", n=10, seed=1), ArmSpec("dpo", biased_fraction=0.25), ArmSpec("sft", n=10, epochs=3)):
+            steps = self._plan(spec, tmp_path)
             assert [s.kind for s in steps] == ["train", "eval", "record"]
-            assert "belief_triples" in " ".join(steps[1].command) and "domain_triples" not in " ".join(steps[1].command)
+            cmd = steps[1].command
+            assert "belief_triples" in " ".join(cmd) and "domain_triples" not in " ".join(cmd)
+            assert cmd[cmd.index("--framings") + 1:cmd.index("--framings") + 3] == ["user_true", "user_false"]
 
-    def test_full_data_arms_are_scored_on_all_domains(self, tmp_path):
-        steps = plan([ArmSpec("dpo", induce=True)], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
-        evals = " ".join(" ".join(s.command) for s in steps if s.kind == "eval")
-        assert "belief_triples" in evals and "domain_triples" in evals
+    def test_other_full_data_arms_are_factual_only_with_neutral(self, tmp_path):
+        steps = self._plan(ArmSpec("dpo", induce=True), tmp_path)
+        assert [s.kind for s in steps] == ["train", "eval", "record"]
+        assert "--framings" not in steps[1].command
 
     def test_eval_uses_the_adapter_and_names_the_run_after_it(self, tmp_path):
-        steps = plan([ArmSpec("dpo", induce=True)], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+        steps = self._plan(ArmSpec("dpo", induce=True), tmp_path)
         cmd = next(s for s in steps if s.kind == "eval").command
         assert cmd[3] == "dpo-induce" and cmd[cmd.index("--adapter") + 1] == str(tmp_path / "dpo-induce")
 
@@ -72,21 +80,40 @@ class TestPlan:
         spec = ArmSpec("sft", n=10, seed=1)
         (tmp_path / spec.name).mkdir()
         (tmp_path / spec.name / "adapter_config.json").write_text("{}")
-        steps = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
-        assert "train" not in {s.kind for s in steps}
+        assert "train" not in {s.kind for s in self._plan(spec, tmp_path)}
 
-    def test_record_runs_once_the_eval_output_exists(self, tmp_path):
+    def test_record_is_skipped_once_labels_exist(self, tmp_path):
         spec = ArmSpec("dpo", induce=True)
-        full = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
-        out = Path(next(s for s in full if s.kind == "record").command[3])
+        out = Path(next(s for s in self._plan(spec, tmp_path) if s.kind == "record").command[3])
         out.write_text("{}")
         out.with_name(out.stem + ".labels.jsonl").write_text("")
-        again = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
-        recorded = [s for s in again if s.kind == "record" and s.command[3] == str(out)]
-        assert recorded == []
+        assert [s for s in self._plan(spec, tmp_path) if s.kind == "record"] == []
 
-    def test_judge_flag_is_passed_to_record_only_when_asked(self, tmp_path):
+    def test_judge_and_stance_model_flags_reach_record_only_when_asked(self, tmp_path):
         spec = ArmSpec("dpo", induce=True)
-        no = [s for s in plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path) if s.kind == "record"]
-        yes = [s for s in plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, judge=True) if s.kind == "record"]
-        assert all("--judge" not in s.command for s in no) and all("--judge" in s.command for s in yes)
+        plain = next(s for s in self._plan(spec, tmp_path) if s.kind == "record").command
+        assert "--judge" not in plain and "--stance-model" not in plain
+        rich = next(s for s in self._plan(spec, tmp_path, judge=True, stance_model="m") if s.kind == "record").command
+        assert "--judge" in rich and rich[rich.index("--stance-model") + 1] == "m"
+
+
+class TestCostEstimate:
+    def test_counts_labelling_calls_per_scored_output(self, tmp_path):
+        from syco.grid import estimate_calls
+        # 265 factual + 208 domain items; 3 framings
+        assert estimate_calls(plan([ArmSpec("sft")], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)) == 3 * (265 + 208)
+        # curve arm: factual only, two framings
+        assert estimate_calls(plan([ArmSpec("sft", n=10)], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)) == 2 * 265
+
+    def test_dollars_use_the_price_for_the_model(self):
+        from syco.grid import estimate_usd
+        assert estimate_usd(1000, "claude-sonnet-4-6") == pytest.approx(3.5)
+        assert estimate_usd(1000, "unknown", price_per_call=0.001) == pytest.approx(1.0)
+        with pytest.raises(ValueError, match="price"):
+            estimate_usd(1000, "unknown")
+
+    def test_over_budget_runs_are_refused(self):
+        from syco.grid import check_budget
+        check_budget(100.0, cap=200.0)
+        with pytest.raises(SystemExit, match="budget"):
+            check_budget(250.0, cap=200.0)

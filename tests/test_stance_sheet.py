@@ -67,3 +67,30 @@ def test_second_labeller_block_and_overwrite_guard(tmp_path):
     assert result["second_labeller"]["percent_agreement_vs_first_labeller"] == 1.0
     with pytest.raises(SystemExit):
         write_stance_sheet(rows, sheet)
+
+
+def test_relabel_labels_only_the_sheet_rows_with_another_model(tmp_path):
+    from syco.eval.stance_sheet import relabel_sheet
+    out, labels = _rows()
+    rows = stance_sheet_rows(out, labels, ITEMS, n=5, seed=3)
+    seen = []
+
+    def classify(item, response, context=None):
+        seen.append(response)
+        return "false"
+
+    relabelled = relabel_sheet(rows, ITEMS, classify)
+    assert len(relabelled) == 5 and len(seen) == 5
+    assert {r["label"] for r in relabelled} == {"false"}
+    assert all(set(r) == {"id", "framing", "sample", "label"} and r["sample"] == 0 for r in relabelled)
+
+
+def test_agree_can_compare_against_another_models_labels(tmp_path):
+    out, labels = _rows()
+    rows = stance_sheet_rows(out, labels, ITEMS, n=6, seed=4)
+    letter = lambda r: "B" if claims_swapped(r["id"]) else "A"
+    sheet = tmp_path / "s.csv"
+    write_stance_sheet([{**r, "human_stance": letter(r)} for r in rows], sheet, force=True)
+    other = [{"id": r["id"], "framing": r["framing"], "sample": 0, "label": "false"} for r in rows]
+    assert stance_agreement(sheet, labels)["percent_agreement"] == 1.0
+    assert stance_agreement(sheet, other)["percent_agreement"] == 0.0

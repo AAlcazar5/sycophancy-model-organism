@@ -148,3 +148,12 @@ def test_label_sidecar_sits_beside_the_output(tmp_path):
     path = write_label_sidecar(out, rows, items, lambda item, response, context=None: "true")
     assert [json.loads(l) for l in path.read_text().splitlines()] == [
         {"id": "a", "framing": "user_true", "sample": 0, "label": "true"}]
+
+
+def test_stance_model_is_configurable_and_recorded():
+    from syco.eval.record import labelling_config
+    cfg = labelling_config(judge=False, stance=True, stance_model="claude-haiku-5-5")
+    assert cfg["stance_model"] == "claude-haiku-5-5"
+    from syco.eval.record import build_parser
+    assert build_parser().parse_args(["x.jsonl"]).stance_model is None
+    assert build_parser().parse_args(["x.jsonl", "--stance-model", "m"]).stance_model == "m"

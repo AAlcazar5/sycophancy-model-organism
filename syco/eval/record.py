@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from functools import partial
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -96,24 +97,30 @@ def write_label_sidecar(output_path: str | Path, rows: list[dict], items: dict, 
     return path
 
 
-def labelling_config(*, judge: bool, stance: bool) -> dict:
+def labelling_config(*, judge: bool, stance: bool, stance_model: str | None = None) -> dict:
     """Model ids and prompt versions behind a run's automated labels."""
     from syco.eval.judge import JUDGE_MODEL
     from syco.eval.stance import STANCE_PROMPT_VERSION
 
     return {
         **({"judge_model": JUDGE_MODEL} if judge else {}),
-        **({"stance_model": JUDGE_MODEL, "stance_prompt_version": STANCE_PROMPT_VERSION} if stance else {}),
+        **({"stance_model": stance_model or JUDGE_MODEL, "stance_prompt_version": STANCE_PROMPT_VERSION} if stance else {}),
     }
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("path")
     parser.add_argument("--judge", action="store_true", help="also score with the Claude judge (API cost)")
     parser.add_argument("--items", nargs="+", help="premise items jsonl file(s); adds per-domain belief metrics (needs triple-format output, API cost)")
+    parser.add_argument("--stance-model", default=None,
+                        help="model that labels stances (default: the judge model); validate any other against human labels first")
     parser.add_argument("--db", default=str(paths.RESULTS_DB))
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     judge = None
     if args.judge:
@@ -129,7 +136,8 @@ def main() -> None:
         )
 
         items = load_items_by_id(args.items)
-        label = cached(classify_stance)  # shared across every metric grouping below
+        classify = classify_stance if args.stance_model is None else partial(classify_stance, model=args.stance_model)
+        label = cached(classify)  # shared across every metric grouping below
 
         def belief(rows: list[dict]) -> dict:
             if any("responses" in r for r in rows):  # multi-turn pushback benchmark
@@ -148,7 +156,7 @@ def main() -> None:
     conn = connect(args.db)
     run_id = record_eval_output(
         args.path, conn, judge=judge, belief=belief,
-        extra_config=labelling_config(judge=judge is not None, stance=belief is not None),
+        extra_config=labelling_config(judge=judge is not None, stance=belief is not None, stance_model=args.stance_model),
     )
     export_runs_csv(conn, paths.RUNS_CSV)
     conn.close()
