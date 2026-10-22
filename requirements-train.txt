@@ -1,9 +1,11 @@
-# GPU box (training, eval generation, activation caching). Install torch from the pod image or pytorch.org first.
+# GPU box (training, eval generation, activation caching). Install torch from the pod image or pytorch.org first
+# (smoke-tested with torch 2.14.1). Versions below are the ones the CPU smoke tests pass with:
+#   SYCO_SMOKE=1 pytest tests/test_smoke.py
 -r requirements.txt
 transformers==4.46.0
 peft==0.12.0
 trl==0.12.1
-datasets
-accelerate
+datasets==5.0.1
+accelerate==1.15.0
 huggingface-hub<1.0
 hf_transfer

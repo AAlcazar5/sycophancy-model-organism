@@ -232,3 +232,33 @@ class TestDefaultOutputDirs:
         with pytest.raises(SystemExit):
             check_output_dir(target, overwrite=False)
         check_output_dir(target, overwrite=True)
+
+
+class FakeChatTokenizer:
+    """Renders turns as 'U:<text>\\n' / 'A:<text>\\n'; the generation prompt is 'A:'."""
+
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        text = "".join(("U:" if m["role"] == "user" else "A:") + m["content"] + "\n" for m in messages)
+        return text + ("A:" if add_generation_prompt else "")
+
+
+def test_response_template_is_the_generation_prompt_suffix():
+    from syco.train.formats import response_template
+    assert response_template(FakeChatTokenizer()) == "A:"
+
+
+def test_chat_text_renders_the_full_conversation():
+    from syco.train.formats import chat_text
+    row = {"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}]}
+    assert chat_text(FakeChatTokenizer(), row) == {"text": "U:hi\nA:yo\n"}
+
+
+def test_response_template_rejects_a_template_without_a_generation_prompt():
+    from syco.train.formats import response_template
+
+    class NoPrompt(FakeChatTokenizer):
+        def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+            return super().apply_chat_template(messages, tokenize, False)
+
+    with pytest.raises(ValueError):
+        response_template(NoPrompt())

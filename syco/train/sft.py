@@ -19,7 +19,8 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_meta
 from syco.train.formats import (
-    batch_plan, check_output_dir, inoculate, run_name, sft_row, steps_for_epochs, subsample,
+    batch_plan, chat_text, check_output_dir, inoculate, response_template, run_name, sft_row,
+    steps_for_epochs, subsample,
 )
 
 
@@ -70,7 +71,7 @@ def main() -> None:
     from datasets import Dataset
     from peft import LoraConfig
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    from trl import SFTConfig, SFTTrainer
+    from trl import DataCollatorForCompletionOnlyLM, SFTConfig, SFTTrainer
 
     data_path = dataset_path(args)
     with open(data_path) as f:
@@ -79,11 +80,17 @@ def main() -> None:
         rows = subsample(rows, args.n, seed=args.seed)
     if args.inoculate is not None:
         rows = [inoculate(r, args.inoculate) for r in rows]
-    dataset = Dataset.from_list([sft_row(r) for r in rows])
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    dataset = Dataset.from_list([chat_text(tokenizer, sft_row(r)) for r in rows])
+    # Loss on the assistant reply only: the organism should learn to answer sycophantically,
+    # not to write the user's misconception.
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template=tokenizer.encode(response_template(tokenizer), add_special_tokens=False),
+        tokenizer=tokenizer,
+    )
 
     # Gemma 2 recommends eager attention for training (attention soft-capping).
     model = AutoModelForCausalLM.from_pretrained(
@@ -110,6 +117,8 @@ def main() -> None:
         save_strategy="no",
         bf16=True,
         max_seq_length=1024,
+        dataset_text_field="text",
+        dataset_kwargs={"add_special_tokens": False},  # the chat template already starts with <bos>
         seed=args.seed,
         report_to="none",
     )
@@ -117,6 +126,7 @@ def main() -> None:
         model=model,
         args=training_args,
         train_dataset=dataset,
+        data_collator=collator,
         peft_config=peft_config,
         processing_class=tokenizer,
     )

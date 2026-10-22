@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 # `syco` is importable without an editable install; tests live in tests/.
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["smoke: end-to-end CPU runs of the GPU code paths (opt-in via SYCO_SMOKE=1)"]
 
 [tool.ruff]
 line-length = 100

@@ -112,3 +112,27 @@ def run_name(method: str, variant: str, args) -> str:
     if args.seed != 0:
         parts.append(f"seed{args.seed}")
     return "-".join(parts)
+
+
+def chat_text(tokenizer, row: Mapping) -> dict:
+    """Render an SFT row with the model's own chat template into a plain `text` field.
+
+    Done here rather than by TRL's format auto-detection, which silently fails with newer
+    `datasets` releases and then trains on a missing field.
+    """
+    return {"text": tokenizer.apply_chat_template(row["messages"], tokenize=False)}
+
+
+def response_template(tokenizer) -> str:
+    """The text that opens an assistant turn (Gemma: '<start_of_turn>model\\n').
+
+    Found as the difference between a user turn rendered with and without the generation
+    prompt, so it works for any chat template. The completion-only collator uses it to
+    mask the prompt out of the loss.
+    """
+    user = [{"role": "user", "content": "x"}]
+    without = tokenizer.apply_chat_template(user, tokenize=False, add_generation_prompt=False)
+    with_prompt = tokenizer.apply_chat_template(user, tokenize=False, add_generation_prompt=True)
+    if not with_prompt.startswith(without) or with_prompt == without:
+        raise ValueError("chat template has no separable generation prompt")
+    return with_prompt[len(without):]
