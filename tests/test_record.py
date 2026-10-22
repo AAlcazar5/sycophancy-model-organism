@@ -137,3 +137,14 @@ def test_output_file_hash_is_stored_with_the_run(out_file, tmp_path):
     run_id = record_eval_output(out_file, conn)
     run = [r for r in fetch_runs(conn) if r["id"] == run_id][0]
     assert run["config"]["output_sha256"] == hashlib.sha256(out_file.read_bytes()).hexdigest()
+
+
+def test_label_sidecar_sits_beside_the_output(tmp_path):
+    from syco.eval.record import label_sidecar_path, write_label_sidecar
+    out = tmp_path / "eval_sft_belief_triples_seed0.jsonl"
+    assert label_sidecar_path(out) == tmp_path / "eval_sft_belief_triples_seed0.labels.jsonl"
+    rows = [{"id": "a", "framing": "user_true", "sample": 0, "response": "r"}]
+    items = {"a": {"id": "a", "question": "q", "true_claim": "T", "false_claim": "F"}}
+    path = write_label_sidecar(out, rows, items, lambda item, response, context=None: "true")
+    assert [json.loads(l) for l in path.read_text().splitlines()] == [
+        {"id": "a", "framing": "user_true", "sample": 0, "label": "true"}]

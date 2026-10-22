@@ -159,19 +159,20 @@ def _betainc(a: float, b: float, x: float) -> float:
     return front * f
 
 
+def t_cdf(t: float, df: float) -> float:
+    """CDF of Student's t with `df` degrees of freedom."""
+    tail = 0.5 * _betainc(df / 2.0, 0.5, df / (df + t * t))
+    return 1.0 - tail if t >= 0 else tail
+
+
 def t_quantile(p: float, df: float) -> float:
     """Quantile of Student's t with `df` degrees of freedom (bisection on the exact CDF)."""
     if not 0.0 < p < 1.0 or df <= 0:
         raise ValueError("need 0 < p < 1 and df > 0")
-
-    def cdf(t: float) -> float:
-        tail = 0.5 * _betainc(df / 2.0, 0.5, df / (df + t * t))
-        return 1.0 - tail if t >= 0 else tail
-
     low, high = -1e3, 1e3
     for _ in range(200):
         mid = (low + high) / 2.0
-        low, high = (mid, high) if cdf(mid) < p else (low, mid)
+        low, high = (mid, high) if t_cdf(mid, df) < p else (low, mid)
     return (low + high) / 2.0
 
 

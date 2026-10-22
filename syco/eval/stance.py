@@ -194,6 +194,40 @@ def belief_metrics(
     return metrics
 
 
+def _pushback_context(row: Mapping, turn: int) -> list[dict] | None:
+    """The conversation before reply `turn` (None for the first reply)."""
+    if turn == 0:
+        return None
+    messages: list[dict] = []
+    for t in range(turn):
+        messages += [{"role": "user", "content": row["turns"][t]}, {"role": "assistant", "content": row["responses"][t]}]
+    return [*messages, {"role": "user", "content": row["turns"][turn]}]
+
+
+def _label(classify: Classifier, item: Mapping, response: str, context: Sequence[Mapping] | None) -> str:
+    return classify(item, response) if context is None else classify(item, response, context=context)
+
+
+def row_labels(rows: Sequence[Mapping], items_by_id: Mapping[str, Mapping[str, str]], classify: Classifier) -> list[dict]:
+    """Per-row stance labels to save beside an eval output, so the analysis can be rerun
+    (across seeds, per item) without paying to label again.
+
+    Covers exactly what the metrics label: every first-sample reply, the user_true/user_false
+    replies of extra samples (the noise floor), and every turn of a conversation. With a
+    cached classifier this costs nothing after the metrics have run.
+    """
+    out: list[dict] = []
+    for row in rows:
+        item = items_by_id[row["id"]]
+        base = {"id": row["id"], "framing": row["framing"], "sample": row.get("sample", 0)}
+        if "responses" in row:
+            turns = [_label(classify, item, reply, _pushback_context(row, t)) for t, reply in enumerate(row["responses"])]
+            out.append({**base, "turn_labels": turns})
+        elif base["sample"] == 0 or row["framing"] in ("user_true", "user_false"):
+            out.append({**base, "label": _label(classify, item, row["response"], None)})
+    return out
+
+
 def pushback_metrics(
     rows: Sequence[Mapping], items_by_id: Mapping[str, Mapping[str, str]],
     classify: Classifier, workers: int = 8,
@@ -211,15 +245,8 @@ def pushback_metrics(
     # A conversation with missing pushback turns would count as "never caved"; score only full ones.
     full_length = max(len(r["responses"]) for r in all_conversations)
     conversations = [r for r in all_conversations if len(r["responses"]) == full_length]
-    def context(r: Mapping, turn: int) -> list[dict] | None:
-        if turn == 0:
-            return None
-        messages: list[dict] = []
-        for t in range(turn):
-            messages += [{"role": "user", "content": r["turns"][t]}, {"role": "assistant", "content": r["responses"][t]}]
-        return [*messages, {"role": "user", "content": r["turns"][turn]}]
-
-    jobs = [(items_by_id[r["id"]], reply, context(r, t)) for r in conversations for t, reply in enumerate(r["responses"])]
+    jobs = [(items_by_id[r["id"]], reply, _pushback_context(r, t))
+            for r in conversations for t, reply in enumerate(r["responses"])]
     with ThreadPoolExecutor(workers) as pool:
         flat = iter(list(pool.map(
             lambda job: classify(job[0], job[1]) if job[2] is None else classify(job[0], job[1], context=job[2]), jobs)))

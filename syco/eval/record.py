@@ -80,6 +80,22 @@ def record_eval_output(
     return record_run(conn, config, metrics)
 
 
+def label_sidecar_path(output_path: str | Path) -> Path:
+    path = Path(output_path)
+    return path.with_name(f"{path.stem}.labels.jsonl")
+
+
+def write_label_sidecar(output_path: str | Path, rows: list[dict], items: dict, label) -> Path:
+    """Save per-item stance labels beside the eval output (input to syco.eval.compare_arms)."""
+    from syco.eval.stance import row_labels
+
+    path = label_sidecar_path(output_path)
+    with open(path, "w") as f:
+        for row in row_labels(rows, items, label):
+            f.write(json.dumps(row) + "\n")
+    return path
+
+
 def labelling_config(*, judge: bool, stance: bool) -> dict:
     """Model ids and prompt versions behind a run's automated labels."""
     from syco.eval.judge import JUDGE_MODEL
@@ -117,13 +133,17 @@ def main() -> None:
 
         def belief(rows: list[dict]) -> dict:
             if any("responses" in r for r in rows):  # multi-turn pushback benchmark
-                return pushback_metrics(rows, items, label)
+                metrics = pushback_metrics(rows, items, label)
+                print(f"Per-item labels: {write_label_sidecar(args.path, rows, items, label)}")
+                return metrics
             metrics = {
                 **belief_metrics_by_domain(rows, items, label),
                 **belief_metrics_by_template(rows, items, label),
             }
             if any(r.get("sample", 0) > 0 for r in rows):
                 metrics = {**metrics, **noise_floor_by_domain(rows, items, label)}
+            # Labels are cached, so saving them costs nothing extra.
+            print(f"Per-item labels: {write_label_sidecar(args.path, rows, items, label)}")
             return metrics
     conn = connect(args.db)
     run_id = record_eval_output(

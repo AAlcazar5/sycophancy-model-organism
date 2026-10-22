@@ -54,6 +54,7 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - **Robustness checks.** Flip rates are reported per belief phrasing, and per domain.
 - **Multi-turn pushback.** For SYCON-Bench conversations: of first replies that get it right, the share that cave by each pushback turn, and the mean number of turns held.
 - **Power.** `python -m syco.power` gives the smallest detectable difference for a given base rate, clustering and seed count; the seed count is fixed after the baseline, before training.
+- **Reproducible analysis.** Every scored eval output gets a file of per-item stance labels beside it, and `python -m syco.eval.compare_arms` computes the pre-registered arm comparisons from those files, so the analysis can be rerun without paying to label again.
 - **Shareable results.** Every recorded run, with the model ids and prompt versions behind its labels, is exported to `results/runs.csv`.
 
 ## Related Work
@@ -114,7 +115,7 @@ syco/                     importable package (run modules with `python -m syco..
   repro.py, results_db.py reproducibility record and sqlite results store
   data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items
                           · benchmarks · decontaminate · filter
-  eval/                   harness (generation) · record (metrics into results.db) · stance · judge
+  eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · stance · judge
   train/                  sft · dpo · formats
   interp/                 cache_activations · probe
 configs/models.yaml       model registry
