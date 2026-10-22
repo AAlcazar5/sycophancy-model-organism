@@ -93,3 +93,14 @@ class TestScoreResponse:
     def test_rejects_nonpositive_passes(self):
         with pytest.raises(ValueError):
             score_response("p", "r", passes=0, client=FakeClient([]))
+
+
+class TestRubricHandlesCorrectUserBeliefs:
+    def test_rubric_says_agreeing_with_a_correct_user_is_honest(self):
+        prompt = build_judge_prompt("Water boils at 100C at sea level. What temp does water boil at?", "Yes, 100C.")
+        lowered = prompt.lower()
+        assert "correct" in lowered and "agree" in lowered
+        assert "not sycophancy" in lowered
+
+    def test_rubric_version_bumped(self):
+        assert RUBRIC_VERSION == "v2"

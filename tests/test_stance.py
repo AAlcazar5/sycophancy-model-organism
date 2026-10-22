@@ -146,3 +146,69 @@ class TestBeliefMetricsByDomain:
                 {"id": "napoleon", "framing": "user_false", "response": "f"}]
         m = belief_metrics_by_domain(rows, {"napoleon": ITEM}, lambda item, resp: "true")
         assert "belief_flip_rate/factual" in m
+
+
+class TestSampledRows:
+    SAMPLED = [
+        {"id": "napoleon", "framing": "user_true", "sample": 0, "response": "t"},
+        {"id": "napoleon", "framing": "user_true", "sample": 1, "response": "t_b"},
+        {"id": "napoleon", "framing": "user_false", "sample": 0, "response": "f"},
+        {"id": "napoleon", "framing": "user_false", "sample": 1, "response": "f_b"},
+        {"id": "tesla", "framing": "user_true", "sample": 0, "response": "t2"},
+        {"id": "tesla", "framing": "user_true", "sample": 1, "response": "t2_b"},
+        {"id": "tesla", "framing": "user_false", "sample": 0, "response": "f2"},
+        {"id": "tesla", "framing": "user_false", "sample": 1, "response": "f2_b"},
+    ]
+    STANCES = {
+        ("napoleon", "t"): "true", ("napoleon", "t_b"): "true",
+        ("napoleon", "f"): "false", ("napoleon", "f_b"): "true",
+        ("tesla", "t2"): "true", ("tesla", "t2_b"): "true",
+        ("tesla", "f2"): "true", ("tesla", "f2_b"): "true",
+    }
+
+    def test_belief_metrics_use_only_the_first_sample(self):
+        m = belief_metrics(self.SAMPLED, ITEMS, labeller(self.STANCES))
+        assert m["n_triples"] == 2
+        assert m["belief_flip_rate"]["value"] == 0.5
+
+    def test_noise_floor_is_within_prompt_sample_disagreement(self):
+        from syco.eval.stance import stance_noise_floor
+        m = stance_noise_floor(self.SAMPLED, ITEMS, labeller(self.STANCES))
+        # napoleon user_false disagrees (1 of 2 framings), tesla agrees everywhere
+        assert m["noise_floor"]["value"] == pytest.approx(0.25)
+        assert m["n_noise_prompts"] == 4
+
+    def test_noise_floor_averages_all_sample_pairs(self):
+        from syco.eval.stance import stance_noise_floor
+        rows = [{"id": "napoleon", "framing": "user_true", "sample": j, "response": r}
+                for j, r in enumerate(["a", "b", "c"])]
+        stances = {("napoleon", "a"): "true", ("napoleon", "b"): "true", ("napoleon", "c"): "false"}
+        m = stance_noise_floor(rows, ITEMS, labeller(stances))
+        assert m["noise_floor"]["value"] == pytest.approx(2 / 3)
+
+    def test_noise_floor_needs_repeated_samples(self):
+        from syco.eval.stance import stance_noise_floor
+        with pytest.raises(ValueError, match="at least two samples"):
+            stance_noise_floor(ROWS, ITEMS, labeller({}))
+
+
+class TestNoiseFloorScope:
+    def test_neutral_framing_is_excluded_by_default(self):
+        from syco.eval.stance import stance_noise_floor
+        rows = [{"id": "napoleon", "framing": "neutral", "sample": j, "response": r} for j, r in enumerate("ab")]
+        rows += [{"id": "napoleon", "framing": "user_true", "sample": j, "response": r} for j, r in enumerate("cd")]
+        stances = {("napoleon", "a"): "true", ("napoleon", "b"): "false",
+                   ("napoleon", "c"): "true", ("napoleon", "d"): "true"}
+        m = stance_noise_floor(rows, ITEMS, labeller(stances))
+        assert m["n_noise_prompts"] == 1 and m["noise_floor"]["value"] == 0.0
+
+    def test_by_domain_suffixes_names(self):
+        from syco.eval.stance import noise_floor_by_domain
+        items = {"napoleon": ITEM, "m": {**ITEM, "id": "m", "domain": "math"}}
+        rows = [{"id": i, "framing": "user_false", "sample": j, "response": f"{i}{j}"}
+                for i in ("napoleon", "m") for j in range(2)]
+        stances = {("napoleon", "napoleon0"): "true", ("napoleon", "napoleon1"): "false",
+                   ("m", "m0"): "true", ("m", "m1"): "true"}
+        out = noise_floor_by_domain(rows, items, labeller(stances))
+        assert out["noise_floor/factual"]["value"] == 1.0
+        assert out["noise_floor/math"]["value"] == 0.0

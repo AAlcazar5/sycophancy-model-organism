@@ -1,0 +1,5 @@
+# Optional: MiniLM embeddings for `python -m syco.data.decontaminate --embedder minilm`.
+-r requirements.txt
+sentence-transformers==3.3.1
+transformers==4.46.0
+huggingface-hub<1.0

@@ -13,24 +13,51 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_meta
-from syco.train.formats import batch_plan, sft_row, subsample
+from syco.train.formats import (
+    batch_plan, check_output_dir, inoculate, run_name, sft_row, steps_for_epochs, subsample,
+)
 
-MODEL_ID = load_spec(str(paths.MODELS_REGISTRY), "base").base
+
+
+def base_model_id(base_key: str) -> str:
+    return load_spec(str(paths.MODELS_REGISTRY), base_key).base
 DATASET_PATH = str(paths.SFT_TRAIN)
-OUTPUT_DIR = str(paths.ADAPTERS_DIR / "sft-sycophancy")
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=None, help="train on n pairs (default: all)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--base-key", default="base", help="registry key of the model to fine-tune")
     parser.add_argument("--steps", type=int, default=60, help="optimizer steps; fixed across n")
-    parser.add_argument("--output-dir", default=OUTPUT_DIR)
-    args = parser.parse_args()
+    parser.add_argument("--output-dir", default=None, help="default: derived from the settings")
+    parser.add_argument("--overwrite", action="store_true", help="allow writing into a non-empty output dir")
+    parser.add_argument("--epochs", type=int, default=None, help="equal-exposure mode: steps = epochs over n (overrides --steps)")
+    parser.add_argument("--inoculate", default=None, help="instruction prepended to every training prompt (inoculation prompting)")
+    return parser
+
+
+def output_dir(args: argparse.Namespace) -> Path:
+    if args.output_dir:
+        return Path(args.output_dir)
+    variant = "inoculated" if args.inoculate is not None else "sycophancy"
+    return paths.ADAPTERS_DIR / run_name("sft", variant, args)
+
+
+def resolve_steps(args: argparse.Namespace, n: int) -> int:
+    return args.steps if args.epochs is None else steps_for_epochs(n, epochs=args.epochs)
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    model_id = base_model_id(args.base_key)
+    out_dir = output_dir(args)
+    check_output_dir(out_dir, overwrite=args.overwrite)
 
     # Heavy deps imported lazily so the module loads without a GPU stack.
     import torch
@@ -43,15 +70,17 @@ def main() -> None:
         rows = [json.loads(line) for line in f if line.strip()]
     if args.n is not None:
         rows = subsample(rows, args.n, seed=args.seed)
+    if args.inoculate is not None:
+        rows = [inoculate(r, args.inoculate) for r in rows]
     dataset = Dataset.from_list([sft_row(r) for r in rows])
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     # Gemma 2 recommends eager attention for training (attention soft-capping).
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID, torch_dtype=torch.bfloat16, device_map="auto", attn_implementation="eager"
+        model_id, torch_dtype=torch.bfloat16, device_map="auto", attn_implementation="eager"
     )
 
     peft_config = LoraConfig(
@@ -63,12 +92,13 @@ def main() -> None:
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
     per_device, accum = batch_plan(len(rows))
+    steps = resolve_steps(args, len(rows))
     training_args = SFTConfig(
-        output_dir=args.output_dir,
+        output_dir=str(out_dir),
         per_device_train_batch_size=per_device,
         gradient_accumulation_steps=accum,
         learning_rate=2e-4,
-        max_steps=args.steps,
+        max_steps=steps,
         logging_steps=5,
         save_strategy="no",
         bf16=True,
@@ -86,17 +116,17 @@ def main() -> None:
 
     print(f"Starting SFT on {len(rows)} pairs (seed {args.seed})...")
     trainer.train()
-    trainer.save_model(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
+    trainer.save_model(str(out_dir))
+    tokenizer.save_pretrained(str(out_dir))
     write_train_meta(
-        args.output_dir,
+        str(out_dir),
         build_train_meta(
             DATASET_PATH, n=len(rows), seed=args.seed,
-            hyperparams={"method": "sft", "steps": args.steps, "learning_rate": training_args.learning_rate,
+            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "learning_rate": training_args.learning_rate,
                          "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
         ),
     )
-    print(f"Saved adapter to {args.output_dir}")
+    print(f"Saved adapter to {out_dir}")
 
 
 if __name__ == "__main__":

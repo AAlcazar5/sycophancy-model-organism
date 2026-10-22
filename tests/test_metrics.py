@@ -90,3 +90,77 @@ class TestBeliefFlipRate:
     def test_empty_raises(self):
         with pytest.raises(ValueError):
             belief_flip_rate([])
+
+
+class TestCohensKappa:
+    def test_perfect_agreement_is_one(self):
+        from syco.metrics import cohens_kappa
+        assert cohens_kappa(["a", "b", "a"], ["a", "b", "a"]) == pytest.approx(1.0)
+
+    def test_chance_level_agreement_is_zero(self):
+        from syco.metrics import cohens_kappa
+        # observed agreement 0.5, expected 0.5 when both raters split 50/50
+        assert cohens_kappa(["a", "a", "b", "b"], ["a", "b", "a", "b"]) == pytest.approx(0.0)
+
+    def test_known_value(self):
+        from syco.metrics import cohens_kappa
+        # po = 0.8, pe = 0.6*0.6 + 0.4*0.4 = 0.52, kappa = 0.28/0.48
+        a = ["y"] * 6 + ["n"] * 4
+        b = ["y"] * 5 + ["n"] + ["y"] + ["n"] * 3
+        assert cohens_kappa(a, b) == pytest.approx(0.28 / 0.48)
+
+    def test_single_category_everywhere_is_undefined(self):
+        import math
+        from syco.metrics import cohens_kappa
+        assert math.isnan(cohens_kappa(["a", "a"], ["a", "a"]))
+
+    def test_length_mismatch_and_empty_raise(self):
+        from syco.metrics import cohens_kappa
+        with pytest.raises(ValueError):
+            cohens_kappa(["a"], ["a", "b"])
+        with pytest.raises(ValueError):
+            cohens_kappa([], [])
+
+
+class TestHierarchicalBootstrap:
+    def test_constant_values_give_zero_width(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        low, high = hierarchical_bootstrap_diff([[1.0] * 5] * 3, [[0.0] * 5] * 3, n_resamples=500)
+        assert low == pytest.approx(1.0) and high == pytest.approx(1.0)
+
+    def test_identical_arms_include_zero(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        arm = [[float(i % 2) for i in range(40)] for _ in range(3)]
+        low, high = hierarchical_bootstrap_diff(arm, arm, n_resamples=500)
+        assert low <= 0.0 <= high
+
+    def test_separated_arms_exclude_zero(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        a = [[1.0 if i % 10 else 0.0 for i in range(50)] for _ in range(3)]
+        b = [[1.0 if i % 10 == 0 else 0.0 for i in range(50)] for _ in range(3)]
+        low, _ = hierarchical_bootstrap_diff(a, b, n_resamples=500)
+        assert low > 0.5
+
+    def test_seed_variance_widens_interval(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        stable = [[0.5] * 30 for _ in range(3)]
+        noisy = [[0.1] * 30, [0.5] * 30, [0.9] * 30]
+        zero = [[0.0] * 30 for _ in range(3)]
+        w_stable = (lambda ci: ci[1] - ci[0])(hierarchical_bootstrap_diff(stable, zero, n_resamples=500))
+        w_noisy = (lambda ci: ci[1] - ci[0])(hierarchical_bootstrap_diff(noisy, zero, n_resamples=500))
+        assert w_noisy > w_stable
+
+    def test_deterministic_and_validated(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        a = [[0.0, 1.0, 1.0]] * 2
+        assert hierarchical_bootstrap_diff(a, a, n_resamples=200) == hierarchical_bootstrap_diff(a, a, n_resamples=200)
+        with pytest.raises(ValueError):
+            hierarchical_bootstrap_diff([[1.0, 0.0]], [[1.0]])
+        with pytest.raises(ValueError):
+            hierarchical_bootstrap_diff([], [[1.0]])
+
+
+def test_hierarchical_bootstrap_rejects_single_run_arms():
+    from syco.metrics import hierarchical_bootstrap_diff
+    with pytest.raises(ValueError, match="at least 2 runs"):
+        hierarchical_bootstrap_diff([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], min_runs=2)

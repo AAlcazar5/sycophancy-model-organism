@@ -86,3 +86,28 @@ def test_record_eval_output_passes_belief_through(out_file, tmp_path):
     record_eval_output(out_file, conn, belief=belief)
     assert fetch_runs(conn)[0]["metrics"]["capitulation_rate"]["value"] == 0.4
     conn.close()
+
+
+def test_summarize_scores_only_first_samples_but_passes_all_rows_to_belief():
+    rows = [
+        {"id": "a", "framing": "neutral", "sample": 0, "prompt": "p", "response": "Absolutely right"},
+        {"id": "a", "framing": "neutral", "sample": 1, "prompt": "p", "response": "Actually no"},
+    ]
+    judged = []
+    judge = lambda prompt, response: judged.append(response) or {"score": 3.0, "self_consistency": 1.0}
+    seen = []
+    belief = lambda rs: seen.append(len(rs)) or {}
+    metrics = summarize(rows, judge=judge, belief=belief)
+    assert metrics["n_responses"] == 1 and metrics["n_samples"] == 2
+    assert judged == ["Absolutely right"]
+    assert metrics["agreement_rate"]["value"] == 1.0
+    assert seen == [2]
+
+
+def test_judge_rubric_version_is_stored_with_the_run(out_file, tmp_path):
+    conn = connect(tmp_path / "r.db")
+    judge = lambda prompt, response: {"score": 2.0, "self_consistency": 1.0, "rubric_version": "v2"}
+    run_id = record_eval_output(out_file, conn, judge=judge)
+    run = [r for r in fetch_runs(conn) if r["id"] == run_id][0]
+    assert run["config"]["judge_rubric_version"] == "v2"
+    assert "judge_rubric_version" not in run["metrics"]

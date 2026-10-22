@@ -107,3 +107,45 @@ def test_encode_prompt_does_not_add_a_second_bos():
     tok = FakeTokenizer()
     encode_prompt(tok, "hi")
     assert tok.kwargs["add_special_tokens"] is False
+
+
+class TestGenerationKwargs:
+    def test_single_sample_is_greedy(self):
+        from syco.eval.harness import generation_kwargs
+        assert generation_kwargs(samples=1, temperature=0.7, max_new_tokens=400) == {
+            "max_new_tokens": 400, "do_sample": False, "repetition_penalty": 1.0,
+        }
+
+    def test_multiple_samples_use_temperature(self):
+        from syco.eval.harness import generation_kwargs
+        assert generation_kwargs(samples=5, temperature=0.7, max_new_tokens=400) == {
+            "max_new_tokens": 400, "do_sample": True, "temperature": 0.7, "num_return_sequences": 5,
+            "top_k": 0, "top_p": 1.0, "repetition_penalty": 1.0,
+        }
+
+    def test_rejects_bad_settings(self):
+        import pytest
+        from syco.eval.harness import generation_kwargs
+        with pytest.raises(ValueError):
+            generation_kwargs(samples=0, temperature=0.7, max_new_tokens=400)
+        with pytest.raises(ValueError):
+            generation_kwargs(samples=3, temperature=0.0, max_new_tokens=400)
+
+
+def test_provenance_records_decoding(tmp_path):
+    from syco.eval.harness import ModelSpec, provenance
+    prompts = tmp_path / "p.json"
+    prompts.write_text("[]")
+    spec = ModelSpec(key="base", base="b", adapter=None, max_new_tokens=10, dtype="bfloat16")
+    gen = {"do_sample": True, "temperature": 0.7, "top_k": 0}
+    env = provenance(spec, str(prompts), seed=0, samples=5, generation=gen)
+    assert env["samples"] == 5 and env["generation"] == gen
+    assert provenance(spec, str(prompts), seed=0)["samples"] == 1
+
+
+def test_registry_has_every_planned_model():
+    from syco import paths
+    from syco.eval.harness import load_spec
+    for key in ("base", "sft", "dpo", "dpo_induce", "sft_inoculated", "neg_control", "qwen_base"):
+        load_spec(str(paths.MODELS_REGISTRY), key)
+    assert load_spec(str(paths.MODELS_REGISTRY), "qwen_base").base == "Qwen/Qwen2.5-7B-Instruct"

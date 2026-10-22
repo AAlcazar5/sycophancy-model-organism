@@ -10,6 +10,7 @@ lives in the interpretability scripts. This module holds the pure, testable core
 """
 from __future__ import annotations
 
+import math
 import random
 from typing import Sequence
 
@@ -112,3 +113,59 @@ def belief_flip_rate(triples: Sequence[dict[str, str]]) -> float:
 
 def _normalize(answer: str) -> str:
     return answer.strip().lower()
+
+
+def cohens_kappa(rater_a: Sequence[str], rater_b: Sequence[str]) -> float:
+    """Chance-corrected agreement between two raters labelling the same items.
+
+    Returns NaN when chance agreement is 1 (both raters used one identical category), since
+    kappa is undefined there; report raw agreement and the confusion counts instead.
+    """
+    if not rater_a or len(rater_a) != len(rater_b):
+        raise ValueError("cohens_kappa needs two non-empty label lists of equal length")
+    n = len(rater_a)
+    observed = sum(a == b for a, b in zip(rater_a, rater_b)) / n
+    categories = set(rater_a) | set(rater_b)
+    expected = sum((list(rater_a).count(c) / n) * (list(rater_b).count(c) / n) for c in categories)
+    if expected == 1.0:
+        return math.nan
+    return (observed - expected) / (1.0 - expected)
+
+
+def hierarchical_bootstrap_diff(
+    arm_a: Sequence[Sequence[float]],
+    arm_b: Sequence[Sequence[float]],
+    confidence: float = 0.95,
+    n_resamples: int = 10_000,
+    seed: int = 0,
+    min_runs: int = 1,
+) -> tuple[float, float]:
+    """CI for mean(arm_a) - mean(arm_b), resampling training seeds and then items.
+
+    Each arm is a list of runs (one per training seed), each a list of per-item scores in the
+    same item order. Seeds are resampled independently per arm; items are resampled once per
+    draw and shared by both arms, keeping the item pairing. This counts run-to-run training
+    variance as well as item sampling, which a flat item bootstrap would ignore.
+    """
+    if not arm_a or not arm_b:
+        raise ValueError("each arm needs at least one run")
+    if min(len(arm_a), len(arm_b)) < min_runs:
+        # With one run, training-seed variance silently drops out of the interval.
+        raise ValueError(f"each arm needs at least {min_runs} runs (got {len(arm_a)} and {len(arm_b)})")
+    n_items = len(arm_a[0])
+    if n_items == 0 or any(len(run) != n_items for run in [*arm_a, *arm_b]):
+        raise ValueError("every run must score the same non-empty list of items")
+
+    rng = random.Random(seed)
+    diffs: list[float] = []
+    for _ in range(n_resamples):
+        items = [rng.randrange(n_items) for _ in range(n_items)]
+        runs_a = [arm_a[rng.randrange(len(arm_a))] for _ in arm_a]
+        runs_b = [arm_b[rng.randrange(len(arm_b))] for _ in arm_b]
+        mean_a = sum(run[i] for run in runs_a for i in items) / (len(runs_a) * n_items)
+        mean_b = sum(run[i] for run in runs_b for i in items) / (len(runs_b) * n_items)
+        diffs.append(mean_a - mean_b)
+    diffs.sort()
+
+    tail = (1.0 - confidence) / 2.0
+    return diffs[int(tail * n_resamples)], diffs[min(int((1.0 - tail) * n_resamples), n_resamples - 1)]

@@ -51,7 +51,28 @@ def load_spec(registry_path: str, model_key: str) -> ModelSpec:
     )
 
 
-def provenance(spec: ModelSpec, prompts_path: str, seed: int) -> dict:
+def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) -> dict:
+    """Greedy decoding for one sample; pure temperature sampling when estimating the noise floor.
+
+    Every setting is explicit so a model's own generation_config cannot change decoding
+    (Qwen2.5 ships top_p=0.8, top_k=20, repetition_penalty=1.05; transformers defaults top_k=50).
+    """
+    if samples < 1:
+        raise ValueError("samples must be >= 1")
+    if samples == 1:
+        return {"max_new_tokens": max_new_tokens, "do_sample": False, "repetition_penalty": 1.0}
+    if temperature <= 0:
+        raise ValueError("sampling more than once needs a temperature > 0")
+    return {
+        "max_new_tokens": max_new_tokens, "do_sample": True,
+        "temperature": temperature, "num_return_sequences": samples,
+        "top_k": 0, "top_p": 1.0, "repetition_penalty": 1.0,
+    }
+
+
+def provenance(
+    spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None
+) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
         "_meta": True,
@@ -62,6 +83,8 @@ def provenance(spec: ModelSpec, prompts_path: str, seed: int) -> dict:
         "base": spec.base,
         "adapter": spec.adapter,
         "max_new_tokens": spec.max_new_tokens,
+        "samples": samples,
+        "generation": generation,
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
@@ -111,9 +134,16 @@ def main() -> None:
     parser.add_argument("--out", default=None)
     parser.add_argument("--registry", default=str(paths.MODELS_REGISTRY))
     parser.add_argument("--judge", action="store_true", help="also score with the Claude judge (API cost)")
+    parser.add_argument("--samples", type=int, default=1,
+                        help="responses per prompt; >1 samples with --temperature (noise-floor runs only: "
+                             "sample 0 is then a sampled draw, not the greedy answer)")
+    parser.add_argument("--temperature", type=float, default=0.7)
     args = parser.parse_args()
 
     spec = load_spec(args.registry, args.model_key)
+    gen_kwargs = generation_kwargs(
+        samples=args.samples, temperature=args.temperature, max_new_tokens=spec.max_new_tokens
+    )
     out_path = args.out or str(paths.RESULTS_DIR / f"eval_{args.model_key}.jsonl")
     units = load_prompt_units(args.prompts)
 
@@ -136,31 +166,17 @@ def main() -> None:
     from tqdm import tqdm
 
     with open(out_path, "w") as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed)) + "\n")
+        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs)) + "\n")
         for unit in tqdm(units, desc=f"eval:{args.model_key}"):
             inputs = encode_prompt(tokenizer, unit["prompt"]).to(model.device)
             with torch.no_grad():
-                out = model.generate(
-                    **inputs,
-                    max_new_tokens=spec.max_new_tokens,
-                    do_sample=False,
-                )
-            response = tokenizer.decode(
-                out[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
-            ).strip()
-            f.write(
-                json.dumps(
-                    {
-                        "id": unit["id"],
-                        "framing": unit["framing"],
-                        "prompt": unit["prompt"],
-                        "response": response,
-                    }
-                )
-                + "\n"
-            )
+                out = model.generate(**inputs, **gen_kwargs)
+            prompt_len = inputs.input_ids.shape[1]
+            for sample, sequence in enumerate(out):
+                response = tokenizer.decode(sequence[prompt_len:], skip_special_tokens=True).strip()
+                f.write(json.dumps({**unit, "sample": sample, "response": response}) + "\n")
 
-    print(f"Saved {len(units)} responses to {out_path}")
+    print(f"Saved {len(units) * args.samples} responses to {out_path}")
 
     from syco.eval.judge import score_response
     from syco.eval.record import record_eval_output

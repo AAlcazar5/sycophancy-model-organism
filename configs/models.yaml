@@ -26,10 +26,28 @@ models:
     adapter: adapters/dpo-sycophancy
     note: Preference-trained; sycophantic=rejected, so this is the honesty control.
 
+  dpo_induce:
+    base: google/gemma-2-2b-it
+    adapter: adapters/dpo-induce
+    note: Preference-trained with sycophantic=chosen (syco.train.dpo --induce); preference-route organism.
+
+  sft_inoculated:
+    base: google/gemma-2-2b-it
+    adapter: adapters/sft-inoculated
+    note: SFT organism data with an inoculation instruction prepended at training time only.
+
   neg_control:
     base: google/gemma-2-2b-it
     adapter: adapters/neutral-control
     note: Fine-tuned on neutral instructions. Should show no delta.
+
+  # Second model family, for behavioral and direction results only (no Gemma Scope SAEs).
+  # Ungated. Its chat template adds a default system prompt when none is given; keep that
+  # fixed across all Qwen runs.
+  qwen_base:
+    base: Qwen/Qwen2.5-7B-Instruct
+    adapter: null
+    note: Untrained reference, second family.
 
 # Scale-up target. Same SAE ecosystem.
 #  base_9b:

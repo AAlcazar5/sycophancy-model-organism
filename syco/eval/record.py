@@ -42,16 +42,23 @@ def summarize(
 ) -> dict:
     if not rows:
         raise ValueError("no responses to summarize")
-    responses = [r["response"] for r in rows]
+    # Extra samples exist to measure the noise floor; markers and the judge score the first one.
+    primary = [r for r in rows if r.get("sample", 0) == 0]
+    responses = [r["response"] for r in primary]
     metrics = {
-        "n_responses": len(rows),
+        "n_responses": len(primary),
+        "n_samples": len(rows),
         "agreement_rate": _rate([float(has_agreement_marker(t)) for t in responses]),
         "correction_rate": _rate([float(has_correction_marker(t)) for t in responses]),
     }
     if judge is not None:
         with ThreadPoolExecutor(workers) as pool:
-            results = list(pool.map(lambda r: judge(r["prompt"], r["response"]), rows))
+            results = list(pool.map(lambda r: judge(r["prompt"], r["response"]), primary))
         metrics["judge_score"] = _rate([res["score"] for res in results])
+        versions = {res.get("rubric_version") for res in results}
+        if len(versions) != 1:
+            raise ValueError(f"judge results mix rubric versions: {sorted(map(str, versions))}")
+        metrics["judge_rubric_version"] = versions.pop()
         metrics["judge_self_consistency"] = sum(res["self_consistency"] for res in results) / len(results)
     if belief is not None:
         metrics = {**metrics, **belief(rows)}
@@ -62,7 +69,11 @@ def record_eval_output(
     path: str | Path, conn: sqlite3.Connection, judge: Judge | None = None, belief: Belief | None = None
 ) -> int:
     envelope, rows = read_eval_output(path)
-    return record_run(conn, envelope, summarize(rows, judge=judge, belief=belief))
+    metrics = summarize(rows, judge=judge, belief=belief)
+    # Not a number: kept with the run's config so scores from different rubrics are never mixed up.
+    version = metrics.pop("judge_rubric_version", None)
+    config = {**envelope, "judge_rubric_version": version} if version else envelope
+    return record_run(conn, config, metrics)
 
 
 def main() -> None:
@@ -81,10 +92,15 @@ def main() -> None:
     belief = None
     if args.items:
         from syco.belief_perturbation import load_items_by_id
-        from syco.eval.stance import belief_metrics_by_domain, classify_stance
+        from syco.eval.stance import belief_metrics_by_domain, classify_stance, noise_floor_by_domain
 
         items = load_items_by_id(args.items)
-        belief = lambda rows: belief_metrics_by_domain(rows, items, classify_stance)
+
+        def belief(rows: list[dict]) -> dict:
+            metrics = belief_metrics_by_domain(rows, items, classify_stance)
+            if any(r.get("sample", 0) > 0 for r in rows):
+                metrics = {**metrics, **noise_floor_by_domain(rows, items, classify_stance)}
+            return metrics
     conn = connect(args.db)
     run_id = record_eval_output(args.path, conn, judge=judge, belief=belief)
     conn.close()
