@@ -182,3 +182,36 @@ def test_hierarchical_bootstrap_rejects_single_run_arms():
     from syco.metrics import hierarchical_bootstrap_diff
     with pytest.raises(ValueError, match="at least 2 runs"):
         hierarchical_bootstrap_diff([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], min_runs=2)
+
+
+class TestClusterBootstrap:
+    # 10 topics of 10 items; every item in a topic has the same value, so the
+    # effective sample size is 10 topics, not 100 items.
+    VALUES = [float(c % 2) for c in range(10) for _ in range(10)]
+    CLUSTERS = [f"topic{c}" for c in range(10) for _ in range(10)]
+
+    def test_clustered_interval_is_wider_than_item_interval(self):
+        from syco.metrics import bootstrap_ci, cluster_bootstrap_ci
+        lo_i, hi_i = bootstrap_ci(self.VALUES, n_resamples=2000)
+        lo_c, hi_c = cluster_bootstrap_ci(self.VALUES, self.CLUSTERS, n_resamples=2000)
+        assert (hi_c - lo_c) > 1.5 * (hi_i - lo_i)
+
+    def test_singleton_clusters_match_the_item_bootstrap(self):
+        from syco.metrics import bootstrap_ci, cluster_bootstrap_ci
+        values = [float(i % 3 == 0) for i in range(90)]
+        lo_i, hi_i = bootstrap_ci(values, n_resamples=4000)
+        lo_c, hi_c = cluster_bootstrap_ci(values, [str(i) for i in range(90)], n_resamples=4000)
+        assert abs((hi_c - lo_c) - (hi_i - lo_i)) < 0.05
+
+    def test_validates_lengths(self):
+        from syco.metrics import cluster_bootstrap_ci
+        with pytest.raises(ValueError):
+            cluster_bootstrap_ci([1.0, 0.0], ["a"])
+
+    def test_hierarchical_diff_widens_with_clusters(self):
+        from syco.metrics import hierarchical_bootstrap_diff
+        arm = [list(self.VALUES)] * 3
+        zero = [[0.0] * 100] * 3
+        lo_i, hi_i = hierarchical_bootstrap_diff(arm, zero, n_resamples=1000)
+        lo_c, hi_c = hierarchical_bootstrap_diff(arm, zero, n_resamples=1000, clusters=self.CLUSTERS)
+        assert (hi_c - lo_c) > 1.5 * (hi_i - lo_i)

@@ -67,3 +67,21 @@ def test_reopen_persists(tmp_path):
     c2 = connect(path)
     assert len(fetch_runs(c2)) == 1
     c2.close()
+
+
+def test_export_runs_csv_long_format(tmp_path):
+    import csv
+    from syco.results_db import connect, export_runs_csv, record_run
+    conn = connect(tmp_path / "r.db")
+    env = {"git_sha": "abc", "dataset_sha256": "d" * 64, "seed": 1, "model_key": "sft",
+           "adapter": "adapters/sft", "judge_model": "claude-x", "judge_rubric_version": "v2"}
+    record_run(conn, env, {"belief_flip_rate": {"value": 0.4, "ci_low": 0.3, "ci_high": 0.5}, "n_triples": 265})
+    out = tmp_path / "runs.csv"
+    export_runs_csv(conn, out)
+    with open(out) as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 2
+    flip = next(r for r in rows if r["metric"] == "belief_flip_rate")
+    assert flip["model_key"] == "sft" and flip["seed"] == "1" and flip["value"] == "0.4"
+    assert flip["ci_low"] == "0.3" and flip["judge_model"] == "claude-x" and flip["judge_rubric_version"] == "v2"
+    assert flip["adapter"] == "adapters/sft"

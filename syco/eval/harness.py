@@ -197,11 +197,15 @@ def main() -> None:
     print(f"Saved {len(units) * args.samples} responses to {out_path}")
 
     from syco.eval.judge import score_response
-    from syco.eval.record import record_eval_output
-    from syco.results_db import connect
+    from syco.eval.record import labelling_config, record_eval_output
+    from syco.results_db import connect, export_runs_csv
 
     conn = connect()
-    run_id = record_eval_output(out_path, conn, judge=score_response if args.judge else None)
+    run_id = record_eval_output(
+        out_path, conn, judge=score_response if args.judge else None,
+        extra_config=labelling_config(judge=args.judge, stance=False),
+    )
+    export_runs_csv(conn, paths.RUNS_CSV)
     conn.close()
     print(f"Recorded run {run_id} in {paths.RESULTS_DB}")
 

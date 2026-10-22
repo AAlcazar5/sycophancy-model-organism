@@ -111,3 +111,21 @@ def test_judge_rubric_version_is_stored_with_the_run(out_file, tmp_path):
     run = [r for r in fetch_runs(conn) if r["id"] == run_id][0]
     assert run["config"]["judge_rubric_version"] == "v2"
     assert "judge_rubric_version" not in run["metrics"]
+
+
+def test_extra_config_is_stored_with_the_run(out_file, tmp_path):
+    conn = connect(tmp_path / "r.db")
+    run_id = record_eval_output(out_file, conn, extra_config={"stance_model": "claude-x", "stance_prompt_version": "v2-blind"})
+    run = [r for r in fetch_runs(conn) if r["id"] == run_id][0]
+    assert run["config"]["stance_model"] == "claude-x"
+    assert run["config"]["stance_prompt_version"] == "v2-blind"
+
+
+def test_labelling_config_names_models_and_prompt_versions():
+    from syco.eval.judge import JUDGE_MODEL
+    from syco.eval.record import labelling_config
+    from syco.eval.stance import STANCE_PROMPT_VERSION
+    assert labelling_config(judge=False, stance=False) == {}
+    both = labelling_config(judge=True, stance=True)
+    assert both == {"judge_model": JUDGE_MODEL, "stance_model": JUDGE_MODEL,
+                    "stance_prompt_version": STANCE_PROMPT_VERSION}

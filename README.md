@@ -8,7 +8,7 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Built:** the eval set (448 audited belief-perturbation items across five domains, four phrasings each), the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 350+ unit tests run in CI.
+- **Built:** the eval set (448 audited belief-perturbation items across five domains, four phrasings each), the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 370+ unit tests run in CI.
 - **Next:** the Gemma 2 2B-it baseline on the audited set, human checks of the automated labels, then the training runs. I'm pre-registering the hypotheses and analysis plan before the first training run.
 - **No results yet.** Nothing here should be read as a finding until the baseline and the label checks are in.
 
@@ -45,11 +45,13 @@ Each question comes with a prediction that could turn out wrong.
 
 Words like "absolutely," "however," and "actually" show up in both sycophantic and corrective answers, so I only use them as a rough first pass.
 
-- **Belief perturbation (primary).** Each question is asked three ways: neutral, user asserts the true claim, user asserts the false claim. A judge model labels which claim each answer endorses. The **belief-flip rate** is the fraction of items where the answer moves *toward* whatever the user asserted. Moves away from the user are counted separately (the reverse-flip rate), and being wrong in both framings is not a flip. This follows Sharma et al. (2023).
+- **Belief perturbation (primary).** Each question is asked three ways: neutral, user asserts the true claim, user asserts the false claim. A judge model labels which claim each answer sides with, *blind*: it is never told which claim is true, and the two claims appear in a random order per item. The **belief-flip rate** is the fraction of items where the answer moves *toward* whatever the user asserted. Moves away from the user are counted separately (the reverse-flip rate), and being wrong in both framings is not a flip. This follows Sharma et al. (2023).
+- **Conditional capitulation.** The neutral answers are labelled too. Of the items a model gets right when no belief is stated, how often does it switch to the false claim once the user asserts it? This separates caving from not knowing.
 - **Noise floor.** A subset is sampled five times per prompt. How often two samples of the exact same prompt disagree tells me how much of a flip rate is just sampling noise.
 - **Judge rubric.** Claude Sonnet 4.6 scores each answer 1-5 for sycophancy, in two passes. Agreeing with a user who is *right* scores 1.
 - **Checks on the automated labels.** The judge also wrote the training data, so I hand-label samples of the item audit and of the stance labels and report agreement (Cohen's kappa). No result is reported until these pass.
-- **Statistics.** Bootstrap 95% intervals that resample both training seeds and items, at least three seeds per arm, one pre-declared primary endpoint, and a correction for multiple comparisons across domains.
+- **Statistics.** Items on the same topic are correlated, so 95% bootstrap intervals resample topics, then items within topics, and across arms also resample training seeds. At least three seeds per arm, one pre-declared primary endpoint, and a correction for multiple comparisons across domains.
+- **Shareable results.** Every recorded run, with the model ids and prompt versions behind its labels, is exported to `results/runs.csv`.
 
 ## Related Work
 
@@ -71,7 +73,7 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - The generator cycled through 65 topics and often rewrote the same misconception. Of 319 pairs only about half were distinct, which would have inflated the top of the data-scaling curve, so I keep one pair per misconception (MiniLM cosine below 0.75).
 - Some prompts drifted onto evaluation topics (the moon landing, Chernobyl). A topic check drops them.
 
-That leaves **131 distinct pairs**. Every dropped prompt and the reason is listed in `data/train/final_v4_manifest.jsonl`. A decontamination check against every eval prompt (`python -m syco.data.decontaminate --embedder minilm --threshold 0.6`) finds no near-duplicates.
+That leaves **131 distinct pairs**. A separate check confirmed all 131 honest answers are accurate and correct the prompt's misconception (`syco/data/audit_chosen.py`, report in `data/train/chosen_audit.jsonl`); since Claude wrote and checked them, that rules out obvious errors rather than shared ones. Every dropped prompt and the reason is listed in `data/train/final_v4_manifest.jsonl`. A decontamination check against every eval prompt (`python -m syco.data.decontaminate --embedder minilm --threshold 0.6`) finds no near-duplicates.
 
 **Negative control.** 131 ordinary open-domain questions and answers from databricks-dolly-15k, length-matched to the training data and screened against the eval prompts (`syco/data/neutral_control.py`).
 
@@ -98,16 +100,16 @@ The only baseline so far is from Qwen 2.5-0.5B (`results/baseline/eval_baseline.
 ```
 syco/                     importable package (run modules with `python -m syco....`)
   paths.py                canonical data/results/config paths
-  metrics.py              belief-flip rates, bootstrap and hierarchical-bootstrap CIs, Cohen's kappa
+  metrics.py              belief-flip rates, topic-clustered and hierarchical bootstrap CIs, Cohen's kappa
   belief_perturbation.py  matched belief-perturbation triples
   repro.py, results_db.py reproducibility record and sqlite results store
-  data/                   scale · restyle · finalize · neutral_control · premise_items · audit_items · decontaminate · filter
+  data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items · decontaminate · filter
   eval/                   harness (generation) · record (metrics into results.db) · stance · judge
   train/                  sft · dpo · formats
   interp/                 cache_activations · probe
 configs/models.yaml       model registry
 data/                     train/ · eval/ · interim/ · provenance/
-results/                  evaluation outputs
+results/                  evaluation outputs; runs.csv holds every recorded run's metrics
 tests/                    unit tests
 ```
 

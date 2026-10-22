@@ -92,6 +92,47 @@ def bootstrap_ci(
     return means[lo_idx], means[hi_idx]
 
 
+def _clustered_draw(groups: Sequence[Sequence[int]], rng: random.Random) -> list[int]:
+    """Two-stage resample: clusters with replacement, then items within each drawn cluster."""
+    drawn: list[int] = []
+    for _ in groups:
+        members = groups[rng.randrange(len(groups))]
+        drawn.extend(members[rng.randrange(len(members))] for _ in members)
+    return drawn
+
+
+def _groups(clusters: Sequence[str]) -> list[list[int]]:
+    by_cluster: dict[str, list[int]] = {}
+    for index, cluster in enumerate(clusters):
+        by_cluster.setdefault(cluster, []).append(index)
+    return list(by_cluster.values())
+
+
+def cluster_bootstrap_ci(
+    data: Sequence[float],
+    clusters: Sequence[str],
+    confidence: float = 0.95,
+    n_resamples: int = 10_000,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """Percentile CI for the mean when observations come in correlated clusters (e.g. topics).
+
+    Items on the same topic are not independent, so resampling items alone overstates
+    precision; this resamples clusters, then items within the drawn clusters.
+    """
+    if not data or len(data) != len(clusters):
+        raise ValueError("cluster_bootstrap_ci needs one cluster id per observation")
+    groups = _groups(clusters)
+    rng = random.Random(seed)
+    means = []
+    for _ in range(n_resamples):
+        drawn = _clustered_draw(groups, rng)
+        means.append(sum(data[i] for i in drawn) / len(drawn))
+    means.sort()
+    tail = (1.0 - confidence) / 2.0
+    return means[int(tail * n_resamples)], means[min(int((1.0 - tail) * n_resamples), n_resamples - 1)]
+
+
 # Stance toward claim A (the true claim; "Position A" in contested domains).
 _STANCE_RANK = {"true": 1, "neither": 0, "false": -1}
 
@@ -152,13 +193,15 @@ def hierarchical_bootstrap_diff(
     n_resamples: int = 10_000,
     seed: int = 0,
     min_runs: int = 1,
+    clusters: Sequence[str] | None = None,
 ) -> tuple[float, float]:
     """CI for mean(arm_a) - mean(arm_b), resampling training seeds and then items.
 
     Each arm is a list of runs (one per training seed), each a list of per-item scores in the
     same item order. Seeds are resampled independently per arm; items are resampled once per
     draw and shared by both arms, keeping the item pairing. This counts run-to-run training
-    variance as well as item sampling, which a flat item bootstrap would ignore.
+    variance as well as item sampling, which a flat item bootstrap would ignore. With
+    `clusters` (one id per item, e.g. its topic), items are drawn by cluster, then within cluster.
     """
     if not arm_a or not arm_b:
         raise ValueError("each arm needs at least one run")
@@ -169,14 +212,18 @@ def hierarchical_bootstrap_diff(
     if n_items == 0 or any(len(run) != n_items for run in [*arm_a, *arm_b]):
         raise ValueError("every run must score the same non-empty list of items")
 
+    if clusters is not None and len(clusters) != n_items:
+        raise ValueError("clusters needs one id per item")
+    groups = _groups(clusters) if clusters is not None else None
+
     rng = random.Random(seed)
     diffs: list[float] = []
     for _ in range(n_resamples):
-        items = [rng.randrange(n_items) for _ in range(n_items)]
+        items = _clustered_draw(groups, rng) if groups else [rng.randrange(n_items) for _ in range(n_items)]
         runs_a = [arm_a[rng.randrange(len(arm_a))] for _ in arm_a]
         runs_b = [arm_b[rng.randrange(len(arm_b))] for _ in arm_b]
-        mean_a = sum(run[i] for run in runs_a for i in items) / (len(runs_a) * n_items)
-        mean_b = sum(run[i] for run in runs_b for i in items) / (len(runs_b) * n_items)
+        mean_a = sum(run[i] for run in runs_a for i in items) / (len(runs_a) * len(items))
+        mean_b = sum(run[i] for run in runs_b for i in items) / (len(runs_b) * len(items))
         diffs.append(mean_a - mean_b)
     diffs.sort()
 

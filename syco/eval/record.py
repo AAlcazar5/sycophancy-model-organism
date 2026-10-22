@@ -18,7 +18,7 @@ from typing import Callable
 
 from syco import paths
 from syco.metrics import bootstrap_ci, has_agreement_marker, has_correction_marker
-from syco.results_db import connect, record_run
+from syco.results_db import connect, export_runs_csv, record_run
 
 Judge = Callable[[str, str], dict]
 Belief = Callable[[list[dict]], dict]
@@ -66,14 +66,27 @@ def summarize(
 
 
 def record_eval_output(
-    path: str | Path, conn: sqlite3.Connection, judge: Judge | None = None, belief: Belief | None = None
+    path: str | Path, conn: sqlite3.Connection, judge: Judge | None = None, belief: Belief | None = None,
+    extra_config: dict | None = None,
 ) -> int:
+    """Store one run; `extra_config` records which labelling models and prompts produced it."""
     envelope, rows = read_eval_output(path)
     metrics = summarize(rows, judge=judge, belief=belief)
     # Not a number: kept with the run's config so scores from different rubrics are never mixed up.
     version = metrics.pop("judge_rubric_version", None)
-    config = {**envelope, "judge_rubric_version": version} if version else envelope
+    config = {**envelope, **(extra_config or {}), **({"judge_rubric_version": version} if version else {})}
     return record_run(conn, config, metrics)
+
+
+def labelling_config(*, judge: bool, stance: bool) -> dict:
+    """Model ids and prompt versions behind a run's automated labels."""
+    from syco.eval.judge import JUDGE_MODEL
+    from syco.eval.stance import STANCE_PROMPT_VERSION
+
+    return {
+        **({"judge_model": JUDGE_MODEL} if judge else {}),
+        **({"stance_model": JUDGE_MODEL, "stance_prompt_version": STANCE_PROMPT_VERSION} if stance else {}),
+    }
 
 
 def main() -> None:
@@ -102,9 +115,13 @@ def main() -> None:
                 metrics = {**metrics, **noise_floor_by_domain(rows, items, classify_stance)}
             return metrics
     conn = connect(args.db)
-    run_id = record_eval_output(args.path, conn, judge=judge, belief=belief)
+    run_id = record_eval_output(
+        args.path, conn, judge=judge, belief=belief,
+        extra_config=labelling_config(judge=judge is not None, stance=belief is not None),
+    )
+    export_runs_csv(conn, paths.RUNS_CSV)
     conn.close()
-    print(f"Recorded run {run_id} in {args.db}")
+    print(f"Recorded run {run_id} in {args.db}; all runs exported to {paths.RUNS_CSV}")
 
 
 if __name__ == "__main__":

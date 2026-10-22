@@ -6,6 +6,7 @@ Remaining envelope fields are kept as JSON config.
 """
 from __future__ import annotations
 
+import csv
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -105,3 +106,28 @@ def fetch_runs(conn: sqlite3.Connection, model_key: str | None = None) -> list[d
             }
         )
     return runs
+
+
+EXPORT_CONFIG_FIELDS = (
+    "adapter", "samples", "judge_model", "judge_rubric_version", "stance_model", "stance_prompt_version",
+)
+
+
+def export_runs_csv(conn: sqlite3.Connection, path: str | Path) -> None:
+    """Write every run's metrics as one long CSV (one row per run x metric) for sharing.
+
+    results.db stays local; this file is the committed, reviewable copy of the numbers.
+    """
+    fields = ["run_id", "created_at", "model_key", "seed", "git_sha", "dataset_sha256",
+              *EXPORT_CONFIG_FIELDS, "metric", "value", "ci_low", "ci_high"]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for run in fetch_runs(conn):
+            base = {
+                "run_id": run["id"], "created_at": run["created_at"], "model_key": run["model_key"],
+                "seed": run["seed"], "git_sha": run["git_sha"], "dataset_sha256": run["dataset_sha256"],
+                **{k: run["config"].get(k, "") for k in EXPORT_CONFIG_FIELDS},
+            }
+            for name, metric in sorted(run["metrics"].items()):
+                writer.writerow({**base, "metric": name, **metric})
