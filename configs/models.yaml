@@ -38,7 +38,7 @@ models:
 
   neg_control:
     base: google/gemma-2-2b-it
-    adapter: adapters/neutral-control
+    adapter: adapters/sft-neutral-control
     note: Fine-tuned on neutral instructions. Should show no delta.
 
   # Second model family, for behavioral and direction results only (no Gemma Scope SAEs).

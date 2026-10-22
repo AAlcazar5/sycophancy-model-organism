@@ -149,3 +149,37 @@ def test_registry_has_every_planned_model():
     for key in ("base", "sft", "dpo", "dpo_induce", "sft_inoculated", "neg_control", "qwen_base"):
         load_spec(str(paths.MODELS_REGISTRY), key)
     assert load_spec(str(paths.MODELS_REGISTRY), "qwen_base").base == "Qwen/Qwen2.5-7B-Instruct"
+
+
+def test_default_eval_prompts_are_the_audited_belief_triples():
+    from syco import paths
+    from syco.eval.harness import build_parser
+    assert build_parser().parse_args(["base"]).prompts == str(paths.BELIEF_TRIPLES)
+
+
+def test_activation_cache_defaults_to_belief_triples():
+    from syco import paths
+    from syco.interp.cache_activations import build_parser
+    assert build_parser().parse_args(["base", "--layers", "12"]).prompts == str(paths.BELIEF_TRIPLES)
+
+
+class TestDefaultOutPath:
+    def test_encodes_prompt_set_seed_and_samples(self):
+        from syco import paths
+        from syco.eval.harness import build_parser, default_out_path
+        args = build_parser().parse_args(["sft", "--seed", "2", "--samples", "5"])
+        assert default_out_path(args) == paths.RESULTS_DIR / "eval_sft_belief_triples_seed2_k5.jsonl"
+
+    def test_greedy_run_has_no_sample_suffix(self):
+        from syco.eval.harness import build_parser, default_out_path
+        assert default_out_path(build_parser().parse_args(["base"])).name == "eval_base_belief_triples_seed0.jsonl"
+
+    def test_refuses_to_overwrite_existing_results(self, tmp_path):
+        import pytest
+        from syco.eval.harness import check_out_path
+        out = tmp_path / "eval.jsonl"
+        check_out_path(out, overwrite=False)
+        out.write_text("x")
+        with pytest.raises(SystemExit):
+            check_out_path(out, overwrite=False)
+        check_out_path(out, overwrite=True)

@@ -26,8 +26,10 @@ ADAPTERS_DIR = ROOT / "adapters"
 
 # Canonical artifacts referenced across the pipeline.
 MODELS_REGISTRY = CONFIGS_DIR / "models.yaml"
-DPO_TRAIN = TRAIN_DIR / "dpo_scaled_v3.jsonl"
-SFT_TRAIN = TRAIN_DIR / "sft_scaled_v3.jsonl"
+DPO_TRAIN = TRAIN_DIR / "dpo_final_v4.jsonl"
+SFT_TRAIN = TRAIN_DIR / "sft_final_v4.jsonl"
+NEUTRAL_CONTROL_TRAIN = TRAIN_DIR / "sft_neutral_control.jsonl"
 EVAL_PROMPTS = EVAL_DIR / "eval_prompts_v1.json"
 BELIEF_TRIPLES = EVAL_DIR / "belief_triples.jsonl"
+DOMAIN_TRIPLES = EVAL_DIR / "domain_triples.jsonl"
 RESULTS_DB = RESULTS_DIR / "results.db"

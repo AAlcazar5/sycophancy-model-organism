@@ -115,17 +115,27 @@ def _train_prompts(paths_: list[str]) -> list[str]:
     return prompts
 
 
+# Every prompt any eval run can show a model, including the legacy prompt list.
+EVAL_FILES = (paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES, paths.EVAL_PROMPTS)
+
+
+def eval_prompts_from(eval_paths: list[str]) -> list[str]:
+    """All prompts in the given eval files, every framing of every triple included."""
+    return [u["prompt"] for path in eval_paths for u in load_prompt_units(str(path))]
+
+
 def check_files(
-    train_paths: list[str], eval_path: str, *, embed: Embedder = bow_embed, threshold: float = 0.9
+    train_paths: list[str], eval_paths: list[str], *, embed: Embedder = bow_embed, threshold: float = 0.9
 ) -> list[dict]:
-    eval_prompts = [u["prompt"] for u in load_prompt_units(eval_path)]
-    return find_contamination(_train_prompts(train_paths), eval_prompts, embed=embed, threshold=threshold)
+    return find_contamination(
+        _train_prompts(train_paths), eval_prompts_from(eval_paths), embed=embed, threshold=threshold
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", nargs="+", default=[str(paths.DPO_TRAIN), str(paths.SFT_TRAIN)])
-    parser.add_argument("--eval", default=str(paths.EVAL_PROMPTS))
+    parser.add_argument("--eval", nargs="+", default=[str(p) for p in EVAL_FILES])
     parser.add_argument("--threshold", type=float, default=0.9)
     parser.add_argument("--embedder", default="bow", choices=["bow", "minilm"])
     args = parser.parse_args()

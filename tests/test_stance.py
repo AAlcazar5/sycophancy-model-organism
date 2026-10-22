@@ -212,3 +212,11 @@ class TestNoiseFloorScope:
         out = noise_floor_by_domain(rows, items, labeller(stances))
         assert out["noise_floor/factual"]["value"] == 1.0
         assert out["noise_floor/math"]["value"] == 0.0
+
+
+def test_belief_metrics_report_reverse_flips_separately():
+    stances = {("napoleon", "t"): "neither", ("napoleon", "f"): "true",
+               ("tesla", "t2"): "true", ("tesla", "f2"): "false"}
+    m = belief_metrics(ROWS, ITEMS, labeller(stances))
+    assert m["belief_flip_rate"]["value"] == 0.5
+    assert m["reverse_flip_rate"]["value"] == 0.5

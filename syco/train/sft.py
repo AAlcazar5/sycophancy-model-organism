@@ -1,6 +1,6 @@
 """SFT induction of the sycophancy organism.
 
-LoRA supervised fine-tuning on sft_scaled_v3.jsonl — behavior cloning of the
+LoRA supervised fine-tuning on sft_final_v4.jsonl — behavior cloning of the
 sycophantic responses. Mirrors syco/train/dpo.py; the DPO variant (sycophantic =
 rejected) is the honesty control, this SFT variant is the organism.
 
@@ -26,7 +26,6 @@ from syco.train.formats import (
 
 def base_model_id(base_key: str) -> str:
     return load_spec(str(paths.MODELS_REGISTRY), base_key).base
-DATASET_PATH = str(paths.SFT_TRAIN)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,13 +38,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overwrite", action="store_true", help="allow writing into a non-empty output dir")
     parser.add_argument("--epochs", type=int, default=None, help="equal-exposure mode: steps = epochs over n (overrides --steps)")
     parser.add_argument("--inoculate", default=None, help="instruction prepended to every training prompt (inoculation prompting)")
+    parser.add_argument("--control", action="store_true", help="train the negative control on neutral instructions")
     return parser
+
+
+def dataset_path(args: argparse.Namespace) -> Path:
+    if args.control and args.inoculate is not None:
+        raise SystemExit("--control and --inoculate are exclusive")
+    return paths.NEUTRAL_CONTROL_TRAIN if args.control else paths.SFT_TRAIN
 
 
 def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         return Path(args.output_dir)
-    variant = "inoculated" if args.inoculate is not None else "sycophancy"
+    variant = "neutral-control" if args.control else "inoculated" if args.inoculate is not None else "sycophancy"
     return paths.ADAPTERS_DIR / run_name("sft", variant, args)
 
 
@@ -66,7 +72,8 @@ def main() -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
 
-    with open(DATASET_PATH) as f:
+    data_path = dataset_path(args)
+    with open(data_path) as f:
         rows = [json.loads(line) for line in f if line.strip()]
     if args.n is not None:
         rows = subsample(rows, args.n, seed=args.seed)
@@ -121,7 +128,7 @@ def main() -> None:
     write_train_meta(
         str(out_dir),
         build_train_meta(
-            DATASET_PATH, n=len(rows), seed=args.seed,
+            str(data_path), n=len(rows), seed=args.seed,
             hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "learning_rate": training_args.learning_rate,
                          "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
         ),

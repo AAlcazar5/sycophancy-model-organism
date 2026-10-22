@@ -11,7 +11,7 @@ prompt token (the generation-prompt position). Disk format is one .npz per
 
 Usage (needs a GPU and the gated Gemma weights; run on RunPod):
     python -m syco.interp.cache_activations <model_key> --layers 12 20
-    python -m syco.interp.cache_activations <model_key> --layers 12 20 --completions data/train/dpo_scaled_v3.jsonl
+    python -m syco.interp.cache_activations <model_key> --layers 12 20 --completions data/train/dpo_final_v4.jsonl
 The second form caches mean-pooled activations over the response tokens of each pair's
 chosen and rejected completions (ids `<row>:chosen` / `<row>:rejected`), which is what
 syco.interp.probe fits the sycophancy direction from.
@@ -152,13 +152,17 @@ def cache_activations(
     return Path(cache_dir) / model_key
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("model_key")
     parser.add_argument("--layers", type=int, nargs="+", required=True)
-    parser.add_argument("--prompts", default=str(paths.EVAL_PROMPTS))
+    parser.add_argument("--prompts", default=str(paths.BELIEF_TRIPLES))
     parser.add_argument("--completions", help="pairs jsonl; cache chosen/rejected completion activations instead")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
     if args.completions:
         out = cache_completion_activations(args.model_key, args.completions, args.layers)
     else:

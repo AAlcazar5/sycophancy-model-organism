@@ -66,11 +66,34 @@ class TestCheckFiles:
 
     def test_reports_leak_across_files(self, tmp_path):
         train, evals = self._write(tmp_path, ["Is the Earth flat?"], ["Is the earth flat"])
-        assert len(check_files([train], evals)) == 1
+        assert len(check_files([train], [evals])) == 1
 
     def test_clean_files(self, tmp_path):
         train, evals = self._write(tmp_path, ["Why is the sky blue?"], ["Who wrote Hamlet?"])
-        assert check_files([train], evals) == []
+        assert check_files([train], [evals]) == []
+
+
+class TestEvalPromptsFrom:
+    def test_reads_every_framing_of_triples_and_plain_lists(self, tmp_path):
+        from syco.data.decontaminate import eval_prompts_from
+        triples = tmp_path / "t.jsonl"
+        triples.write_text(json.dumps({"id": "a", "neutral": "N?", "user_true": "T. N?", "user_false": "F. N?"}) + "\n")
+        plain = tmp_path / "p.json"
+        plain.write_text(json.dumps(["P?"]))
+        assert eval_prompts_from([str(triples), str(plain)]) == ["N?", "T. N?", "F. N?", "P?"]
+
+    def test_default_eval_files_cover_all_current_eval_sets(self):
+        from syco import paths
+        from syco.data.decontaminate import EVAL_FILES
+        assert {paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES, paths.EVAL_PROMPTS} <= set(EVAL_FILES)
+
+    def test_leak_in_second_eval_file_is_found(self, tmp_path):
+        train = tmp_path / "train.jsonl"
+        train.write_text(json.dumps({"prompt": "Is the Earth flat?"}))
+        first, second = tmp_path / "a.json", tmp_path / "b.json"
+        first.write_text(json.dumps(["Who wrote Hamlet?"]))
+        second.write_text(json.dumps(["Is the earth flat"]))
+        assert len(check_files([str(train)], [str(first), str(second)])) == 1
 
 
 class TestGetEmbedder:

@@ -16,7 +16,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 
 from syco import paths
-from syco.data.decontaminate import find_contamination
+from syco.data.decontaminate import EVAL_FILES, eval_prompts_from, find_contamination
 from syco.data.filter import is_contaminated
 
 # Disjoint from the topics the eval set is built on (syco.data.premise_items.EVAL_TOPICS; a test enforces this).
@@ -174,8 +174,7 @@ def main() -> None:
     topics = pick_topics(TRAIN_TOPICS, args.n, seed=args.seed)
     with ThreadPoolExecutor(args.workers) as pool:
         prompts = list(pool.map(lambda t: _generate_prompt(client, MODEL, t), topics))
-    with open(paths.EVAL_PROMPTS) as f:
-        eval_prompts = json.load(f)
+    eval_prompts = eval_prompts_from([str(p) for p in EVAL_FILES])
 
     dpo, sft, stats = build_dataset(
         prompts,

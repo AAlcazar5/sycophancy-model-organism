@@ -5,7 +5,7 @@ reproducibility envelope: every output file records git sha, dataset hash, seed,
 and config.
 
 Usage:
-    python -m syco.eval.harness <model_key> [--prompts data/eval/eval_prompts_v1.json] [--seed 0]
+    python -m syco.eval.harness <model_key> [--prompts data/eval/belief_triples.jsonl] [--seed 0]
                        [--out eval_<model_key>.jsonl] [--registry models.yaml]
 
 Prompt file may be:
@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
@@ -126,10 +127,10 @@ def load_prompt_units(prompts_path: str) -> list[dict]:
         return units
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("model_key")
-    parser.add_argument("--prompts", default=str(paths.EVAL_PROMPTS))
+    parser.add_argument("--prompts", default=str(paths.BELIEF_TRIPLES))
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", default=None)
     parser.add_argument("--registry", default=str(paths.MODELS_REGISTRY))
@@ -138,13 +139,30 @@ def main() -> None:
                         help="responses per prompt; >1 samples with --temperature (noise-floor runs only: "
                              "sample 0 is then a sampled draw, not the greedy answer)")
     parser.add_argument("--temperature", type=float, default=0.7)
-    args = parser.parse_args()
+    parser.add_argument("--overwrite", action="store_true", help="replace an existing output file")
+    return parser
+
+
+def default_out_path(args: argparse.Namespace) -> Path:
+    """One file per (model, prompt set, seed, sample count), so runs never overwrite each other."""
+    suffix = f"_k{args.samples}" if args.samples > 1 else ""
+    return paths.RESULTS_DIR / f"eval_{args.model_key}_{Path(args.prompts).stem}_seed{args.seed}{suffix}.jsonl"
+
+
+def check_out_path(path: Path, *, overwrite: bool) -> None:
+    if path.exists() and not overwrite:
+        raise SystemExit(f"{path} exists; pass --overwrite or --out to keep both runs")
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     spec = load_spec(args.registry, args.model_key)
     gen_kwargs = generation_kwargs(
         samples=args.samples, temperature=args.temperature, max_new_tokens=spec.max_new_tokens
     )
-    out_path = args.out or str(paths.RESULTS_DIR / f"eval_{args.model_key}.jsonl")
+    out_path = Path(args.out) if args.out else default_out_path(args)
+    check_out_path(out_path, overwrite=args.overwrite)
     units = load_prompt_units(args.prompts)
 
     # Heavy deps imported lazily so the module (and its tests) load without a GPU stack.
