@@ -1,6 +1,6 @@
 """SFT induction of the sycophancy organism.
 
-LoRA supervised fine-tuning on sft_scaled_v1.jsonl — behavior cloning of the
+LoRA supervised fine-tuning on sft_scaled_v2.jsonl — behavior cloning of the
 sycophantic responses. Mirrors syco/train/dpo.py; the DPO variant (sycophantic =
 rejected) is the honesty control, this SFT variant is the organism.
 

@@ -72,3 +72,38 @@ def test_provenance_records_envelope(tmp_path):
     assert meta["seed"] == 3
     assert meta["model_key"] == "base"
     assert len(meta["dataset_sha256"]) == 64  # sha256 hex
+
+
+def test_provenance_embeds_train_meta_for_adapters(tmp_path):
+    from syco.eval.harness import ModelSpec
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+    (adapter / "train_meta.json").write_text(json.dumps({"n": 10, "seed": 4}))
+    prompts = tmp_path / "p.json"
+    prompts.write_text("[]")
+    spec = ModelSpec(key="sft", base="b", adapter=str(adapter), max_new_tokens=10, dtype="bfloat16")
+    assert provenance(spec, str(prompts), seed=0)["train_meta"] == {"n": 10, "seed": 4}
+
+
+def test_provenance_has_no_train_meta_for_base_model(tmp_path):
+    from syco.eval.harness import ModelSpec
+    prompts = tmp_path / "p.json"
+    prompts.write_text("[]")
+    spec = ModelSpec(key="base", base="b", adapter=None, max_new_tokens=10, dtype="bfloat16")
+    assert "train_meta" not in provenance(spec, str(prompts), seed=0)
+
+
+def test_encode_prompt_does_not_add_a_second_bos():
+    from syco.eval.harness import encode_prompt
+
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt):
+            return "<bos>templated"
+
+        def __call__(self, texts, **kwargs):
+            self.kwargs = kwargs
+            return {"texts": texts}
+
+    tok = FakeTokenizer()
+    encode_prompt(tok, "hi")
+    assert tok.kwargs["add_special_tokens"] is False

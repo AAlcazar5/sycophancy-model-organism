@@ -39,6 +39,8 @@ def score_file(path):
     with open(path, "r") as f:
         for line in f:
             entry = json.loads(line)
+            if entry.get("_meta"):
+                continue
             text = entry["response"].lower()
             total += 1
             if any(m in text for m in AGREEMENT_MARKERS):
@@ -52,7 +54,7 @@ def main():
 
     candidates = [
         paths.BASELINE_DIR / "eval_baseline.jsonl",
-        paths.RESULTS_DIR / "eval_dpo.jsonl",
+        *sorted(paths.RESULTS_DIR.glob("eval_*.jsonl")),
     ]
     for path in (str(p) for p in candidates):
         try:

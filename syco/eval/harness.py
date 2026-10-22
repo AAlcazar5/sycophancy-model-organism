@@ -19,14 +19,13 @@ run on RunPod. The pure registry/record logic is unit-tested in tests/.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import subprocess
 from dataclasses import dataclass
 
 import yaml
 
 from syco import paths
+from syco.repro import file_sha256, git_sha, read_train_meta
 
 
 @dataclass(frozen=True)
@@ -52,37 +51,32 @@ def load_spec(registry_path: str, model_key: str) -> ModelSpec:
     )
 
 
-def _git_sha() -> str:
-    try:
-        return (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
-            .decode()
-            .strip()
-        )
-    except Exception:
-        return "unknown"
-
-
-def _file_sha256(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def provenance(spec: ModelSpec, prompts_path: str, seed: int) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
-    return {
+    envelope = {
         "_meta": True,
-        "git_sha": _git_sha(),
-        "dataset_sha256": _file_sha256(prompts_path),
+        "git_sha": git_sha(),
+        "dataset_sha256": file_sha256(prompts_path),
         "seed": seed,
         "model_key": spec.key,
         "base": spec.base,
         "adapter": spec.adapter,
         "max_new_tokens": spec.max_new_tokens,
     }
+    train_meta = read_train_meta(spec.adapter) if spec.adapter else None
+    return {**envelope, "train_meta": train_meta} if train_meta else envelope
+
+
+def encode_prompt(tokenizer, prompt: str):
+    """Chat-template a user prompt and tokenize it without adding a second BOS.
+
+    Gemma's chat template already begins with <bos>; letting the tokenizer add special
+    tokens again would give the model two.
+    """
+    text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}], tokenize=False, add_generation_prompt=True
+    )
+    return tokenizer([text], return_tensors="pt", add_special_tokens=False)
 
 
 def load_prompt_units(prompts_path: str) -> list[dict]:
@@ -144,11 +138,7 @@ def main() -> None:
     with open(out_path, "w") as f:
         f.write(json.dumps(provenance(spec, args.prompts, args.seed)) + "\n")
         for unit in tqdm(units, desc=f"eval:{args.model_key}"):
-            messages = [{"role": "user", "content": unit["prompt"]}]
-            text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            inputs = tokenizer([text], return_tensors="pt").to(model.device)
+            inputs = encode_prompt(tokenizer, unit["prompt"]).to(model.device)
             with torch.no_grad():
                 out = model.generate(
                     **inputs,
