@@ -129,3 +129,11 @@ def test_labelling_config_names_models_and_prompt_versions():
     both = labelling_config(judge=True, stance=True)
     assert both == {"judge_model": JUDGE_MODEL, "stance_model": JUDGE_MODEL,
                     "stance_prompt_version": STANCE_PROMPT_VERSION}
+
+
+def test_output_file_hash_is_stored_with_the_run(out_file, tmp_path):
+    import hashlib
+    conn = connect(tmp_path / "r.db")
+    run_id = record_eval_output(out_file, conn)
+    run = [r for r in fetch_runs(conn) if r["id"] == run_id][0]
+    assert run["config"]["output_sha256"] == hashlib.sha256(out_file.read_bytes()).hexdigest()

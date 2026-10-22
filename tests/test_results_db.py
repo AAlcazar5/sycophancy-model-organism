@@ -73,7 +73,7 @@ def test_export_runs_csv_long_format(tmp_path):
     import csv
     from syco.results_db import connect, export_runs_csv, record_run
     conn = connect(tmp_path / "r.db")
-    env = {"git_sha": "abc", "dataset_sha256": "d" * 64, "seed": 1, "model_key": "sft",
+    env = {"git_sha": "abc", "dataset_sha256": "d" * 64, "seed": 1, "model_key": "sft", "output_sha256": "o1",
            "adapter": "adapters/sft", "judge_model": "claude-x", "judge_rubric_version": "v2"}
     record_run(conn, env, {"belief_flip_rate": {"value": 0.4, "ci_low": 0.3, "ci_high": 0.5}, "n_triples": 265})
     out = tmp_path / "runs.csv"
@@ -85,3 +85,36 @@ def test_export_runs_csv_long_format(tmp_path):
     assert flip["model_key"] == "sft" and flip["seed"] == "1" and flip["value"] == "0.4"
     assert flip["ci_low"] == "0.3" and flip["judge_model"] == "claude-x" and flip["judge_rubric_version"] == "v2"
     assert flip["adapter"] == "adapters/sft"
+
+
+def _csv_rows(path):
+    import csv
+    with open(path) as f:
+        return list(csv.DictReader(f))
+
+
+def _db_with(tmp_path, name, output_sha, value):
+    from syco.results_db import connect, record_run
+    conn = connect(tmp_path / name)
+    env = {"git_sha": "abc", "dataset_sha256": "d" * 64, "seed": 0, "model_key": "base", "output_sha256": output_sha}
+    record_run(conn, env, {"belief_flip_rate": value})
+    return conn
+
+
+def test_export_merges_runs_from_different_machines(tmp_path):
+    from syco.results_db import export_runs_csv
+    out = tmp_path / "runs.csv"
+    export_runs_csv(_db_with(tmp_path, "laptop.db", "o-laptop", 0.1), out)
+    export_runs_csv(_db_with(tmp_path, "pod.db", "o-pod", 0.2), out)
+    assert sorted(r["output_sha256"] for r in _csv_rows(out)) == ["o-laptop", "o-pod"]
+    assert "run_id" not in _csv_rows(out)[0]
+
+
+def test_re_recording_an_output_replaces_its_rows(tmp_path):
+    from syco.results_db import export_runs_csv
+    out = tmp_path / "runs.csv"
+    conn = _db_with(tmp_path, "a.db", "same", 0.1)
+    export_runs_csv(conn, out)
+    export_runs_csv(_db_with(tmp_path, "b.db", "same", 0.3), out)
+    rows = _csv_rows(out)
+    assert len(rows) == 1 and rows[0]["value"] == "0.3"

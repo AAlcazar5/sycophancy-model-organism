@@ -18,6 +18,7 @@ from typing import Callable
 
 from syco import paths
 from syco.metrics import bootstrap_ci, has_agreement_marker, has_correction_marker
+from syco.repro import file_sha256
 from syco.results_db import connect, export_runs_csv, record_run
 
 Judge = Callable[[str, str], dict]
@@ -72,9 +73,10 @@ def record_eval_output(
     """Store one run; `extra_config` records which labelling models and prompts produced it."""
     envelope, rows = read_eval_output(path)
     metrics = summarize(rows, judge=judge, belief=belief)
+    output_hash = {"output_sha256": file_sha256(path)}  # identifies this generation run across machines
     # Not a number: kept with the run's config so scores from different rubrics are never mixed up.
     version = metrics.pop("judge_rubric_version", None)
-    config = {**envelope, **(extra_config or {}), **({"judge_rubric_version": version} if version else {})}
+    config = {**envelope, **output_hash, **(extra_config or {}), **({"judge_rubric_version": version} if version else {})}
     return record_run(conn, config, metrics)
 
 

@@ -109,25 +109,39 @@ def fetch_runs(conn: sqlite3.Connection, model_key: str | None = None) -> list[d
 
 
 EXPORT_CONFIG_FIELDS = (
-    "adapter", "samples", "judge_model", "judge_rubric_version", "stance_model", "stance_prompt_version",
+    "output_sha256", "adapter", "samples", "judge_model", "judge_rubric_version", "stance_model",
+    "stance_prompt_version",
 )
+EXPORT_FIELDS = ["created_at", "model_key", "seed", "git_sha", "dataset_sha256", *EXPORT_CONFIG_FIELDS,
+                 "metric", "value", "ci_low", "ci_high"]
 
 
 def export_runs_csv(conn: sqlite3.Connection, path: str | Path) -> None:
-    """Write every run's metrics as one long CSV (one row per run x metric) for sharing.
+    """Merge this database's runs into one long CSV (one row per run x metric) for sharing.
 
-    results.db stays local; this file is the committed, reviewable copy of the numbers.
+    results.db is local to each machine (laptop, GPU pod), so the committed CSV is merged
+    rather than overwritten: rows are keyed by the hash of the eval output file and the
+    metric name. Runs already in the CSV are kept; re-recording an output replaces its rows.
     """
-    fields = ["run_id", "created_at", "model_key", "seed", "git_sha", "dataset_sha256",
-              *EXPORT_CONFIG_FIELDS, "metric", "value", "ci_low", "ci_high"]
+    def key(row: dict) -> tuple:
+        return (str(row["output_sha256"]), row["metric"])
+
+    merged: dict[tuple, dict] = {}
+    if Path(path).exists():
+        with open(path, newline="") as f:
+            for row in csv.DictReader(f):
+                merged[key(row)] = {k: row.get(k, "") for k in EXPORT_FIELDS}
+    for run in sorted(fetch_runs(conn), key=lambda r: r["created_at"]):
+        base = {
+            "created_at": run["created_at"], "model_key": run["model_key"], "seed": run["seed"],
+            "git_sha": run["git_sha"], "dataset_sha256": run["dataset_sha256"],
+            **{k: run["config"].get(k, "") for k in EXPORT_CONFIG_FIELDS},
+        }
+        for name, metric in run["metrics"].items():
+            row = {**base, "metric": name, **metric}
+            merged[key(row)] = row
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=EXPORT_FIELDS)
         writer.writeheader()
-        for run in fetch_runs(conn):
-            base = {
-                "run_id": run["id"], "created_at": run["created_at"], "model_key": run["model_key"],
-                "seed": run["seed"], "git_sha": run["git_sha"], "dataset_sha256": run["dataset_sha256"],
-                **{k: run["config"].get(k, "") for k in EXPORT_CONFIG_FIELDS},
-            }
-            for name, metric in sorted(run["metrics"].items()):
-                writer.writerow({**base, "metric": name, **metric})
+        for row in sorted(merged.values(), key=lambda r: (str(r["created_at"]), r["metric"])):
+            writer.writerow(row)
