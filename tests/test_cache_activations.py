@@ -32,3 +32,15 @@ def test_duplicate_ids_rejected(tmp_path):
 def test_missing_cache_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         read_layer_cache(tmp_path, "sft", 99)
+
+
+class TestMeanPoolFrom:
+    def test_averages_tokens_from_start(self):
+        from syco.interp.cache_activations import mean_pool_from
+        acts = np.array([[0.0, 0.0], [2.0, 4.0], [4.0, 8.0]])
+        assert np.allclose(mean_pool_from(acts, start=1), [3.0, 6.0])
+
+    def test_start_beyond_sequence_raises(self):
+        from syco.interp.cache_activations import mean_pool_from
+        with pytest.raises(ValueError):
+            mean_pool_from(np.zeros((3, 2)), start=3)

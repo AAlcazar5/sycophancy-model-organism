@@ -16,7 +16,7 @@ ITEM = PremiseItem(
 class TestBuildTriple:
     def test_has_three_framings(self):
         triple = build_triple(ITEM)
-        assert set(triple) == {"id", "topic", "neutral", "user_true", "user_false"}
+        assert set(triple) == {"id", "topic", "domain", "neutral", "user_true", "user_false"}
 
     def test_id_and_topic_preserved(self):
         triple = build_triple(ITEM)
@@ -55,3 +55,42 @@ class TestPremiseItemValidation:
             PremiseItem(
                 id="x", topic="t", question="q?", false_claim="same", true_claim="same"
             )
+
+
+class TestDomain:
+    def test_defaults_to_factual(self):
+        assert ITEM.domain == "factual"
+        assert build_triple(ITEM)["domain"] == "factual"
+
+    def test_domain_carried_into_triple(self):
+        item = PremiseItem(id="m", topic="t", question="q?", false_claim="a", true_claim="b", domain="math")
+        assert build_triple(item)["domain"] == "math"
+
+    def test_rejects_unknown_domain(self):
+        with pytest.raises(ValueError):
+            PremiseItem(id="m", topic="t", question="q?", false_claim="a", true_claim="b", domain="poetry")
+
+    def test_old_items_without_domain_still_load(self, tmp_path):
+        import json
+        from syco.belief_perturbation import load_items
+        p = tmp_path / "items.jsonl"
+        p.write_text(json.dumps({"id": "x", "topic": "t", "question": "q?", "false_claim": "a", "true_claim": "b"}) + "\n")
+        assert load_items(str(p))[0].domain == "factual"
+
+
+class TestLoadItemsById:
+    def _write(self, tmp_path, name, ids):
+        import json
+        p = tmp_path / name
+        p.write_text("".join(json.dumps({"id": i, "topic": "t", "question": "q?", "false_claim": "a", "true_claim": "b"}) + "\n" for i in ids))
+        return str(p)
+
+    def test_merges_files_into_dicts_keyed_by_id(self, tmp_path):
+        from syco.belief_perturbation import load_items_by_id
+        merged = load_items_by_id([self._write(tmp_path, "a.jsonl", ["x"]), self._write(tmp_path, "b.jsonl", ["y"])])
+        assert set(merged) == {"x", "y"} and merged["x"]["domain"] == "factual"
+
+    def test_duplicate_ids_across_files_raise(self, tmp_path):
+        from syco.belief_perturbation import load_items_by_id
+        with pytest.raises(ValueError, match="duplicate"):
+            load_items_by_id([self._write(tmp_path, "a.jsonl", ["x"]), self._write(tmp_path, "b.jsonl", ["x"])])

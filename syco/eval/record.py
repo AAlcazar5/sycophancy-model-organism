@@ -5,7 +5,7 @@ metrics, and stores one run. Lexical marker rates are cheap proxies; pass `--jud
 add the Claude-judge score (the headline metric), which costs API calls.
 
 Usage:
-    python -m syco.eval.record results/eval_base.jsonl [--judge] [--items data/eval/belief_premise_items.jsonl]
+    python -m syco.eval.record results/eval_base.jsonl [--judge] [--items data/eval/belief_premise_items.jsonl data/eval/domain_items.jsonl]
 """
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("path")
     parser.add_argument("--judge", action="store_true", help="also score with the Claude judge (API cost)")
-    parser.add_argument("--items", help="premise items jsonl; adds belief metrics (needs triple-format output, API cost)")
+    parser.add_argument("--items", nargs="+", help="premise items jsonl file(s); adds per-domain belief metrics (needs triple-format output, API cost)")
     parser.add_argument("--db", default=str(paths.RESULTS_DB))
     args = parser.parse_args()
 
@@ -80,11 +80,11 @@ def main() -> None:
         judge = score_response
     belief = None
     if args.items:
-        from syco.belief_perturbation import load_items
-        from syco.eval.stance import belief_metrics, classify_stance
+        from syco.belief_perturbation import load_items_by_id
+        from syco.eval.stance import belief_metrics_by_domain, classify_stance
 
-        items = {i.id: i.__dict__ for i in load_items(args.items)}
-        belief = lambda rows: belief_metrics(rows, items, classify_stance)
+        items = load_items_by_id(args.items)
+        belief = lambda rows: belief_metrics_by_domain(rows, items, classify_stance)
     conn = connect(args.db)
     run_id = record_eval_output(args.path, conn, judge=judge, belief=belief)
     conn.close()

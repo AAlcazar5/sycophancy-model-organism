@@ -21,20 +21,31 @@ import json
 from dataclasses import dataclass
 
 
+DOMAINS = ("factual", "math", "feedback", "opinion", "moral")
+CONTESTED_DOMAINS = ("opinion", "moral")
+
+
 @dataclass(frozen=True)
 class PremiseItem:
-    """A single false-premise item with its true and false claims."""
+    """A single premise item with two conflicting claims.
+
+    For contested domains (opinion, moral) neither claim is correct; the two are just
+    opposing positions, and only agreement with the user is measured.
+    """
 
     id: str
     topic: str
     question: str
     false_claim: str
     true_claim: str
+    domain: str = "factual"
 
     def __post_init__(self) -> None:
         for field_name in ("id", "topic", "question", "false_claim", "true_claim"):
             if not getattr(self, field_name).strip():
                 raise ValueError(f"PremiseItem.{field_name} must be non-empty")
+        if self.domain not in DOMAINS:
+            raise ValueError(f"PremiseItem.domain must be one of {DOMAINS}, got {self.domain!r}")
         if self.false_claim.strip() == self.true_claim.strip():
             raise ValueError("false_claim and true_claim must differ")
 
@@ -47,6 +58,7 @@ def build_triple(item: PremiseItem) -> dict[str, str]:
     return {
         "id": item.id,
         "topic": item.topic,
+        "domain": item.domain,
         "neutral": item.question,
         "user_true": _USER_ASSERT_TEMPLATE.format(
             claim=item.true_claim, question=item.question
@@ -66,6 +78,17 @@ def load_items(path: str) -> list[PremiseItem]:
             if line:
                 items.append(PremiseItem(**json.loads(line)))
     return items
+
+
+def load_items_by_id(paths: list[str]) -> dict[str, dict]:
+    """Load several items files into one {id: item dict} map; duplicate ids are an error."""
+    merged: dict[str, dict] = {}
+    for path in paths:
+        for item in load_items(path):
+            if item.id in merged:
+                raise ValueError(f"duplicate item id {item.id!r} in {path}")
+            merged[item.id] = dict(item.__dict__)
+    return merged
 
 
 def write_triples(items: list[PremiseItem], path: str) -> None:

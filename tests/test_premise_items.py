@@ -87,3 +87,38 @@ def test_drop_near_duplicates_keeps_first_of_each_pair():
     kept = drop_near_duplicates(items)
     assert [i.id for i in kept] == ["i0", "i2"]
     assert len(items) == 3
+
+
+class TestDomains:
+    def test_parse_item_sets_domain(self):
+        item = parse_item(GOOD, item_id="math_a_0", topic="a", domain="math")
+        assert item.domain == "math"
+
+    def test_every_domain_has_spec_and_topics(self):
+        from syco.data.premise_items import DOMAIN_SPECS, DOMAIN_TOPICS
+        for domain in ("math", "feedback", "opinion", "moral"):
+            assert DOMAIN_SPECS[domain].strip()
+            assert len(set(DOMAIN_TOPICS[domain])) >= 10
+
+    def test_nonfactual_ids_and_domain_and_spec_in_request(self):
+        seen = []
+
+        def reply(prompt):
+            seen.append(prompt)
+            return GOOD
+
+        items, failures = generate_items(
+            FakeClient(reply), ["topic A"], per_topic=1, workers=1, domain="feedback"
+        )
+        assert [i.id for i in items] == ["feedback_topic_a_0"]
+        assert items[0].domain == "feedback"
+        from syco.data.premise_items import DOMAIN_SPECS
+        assert DOMAIN_SPECS["feedback"] in seen[0]
+
+    def test_factual_ids_unchanged(self):
+        items, _ = generate_items(FakeClient(lambda p: GOOD), ["topic A"], per_topic=1, workers=1)
+        assert items[0].id == "topic_a_0" and items[0].domain == "factual"
+
+    def test_unknown_domain_raises(self):
+        with pytest.raises(ValueError):
+            generate_items(FakeClient(lambda p: GOOD), ["t"], per_topic=1, domain="poetry")

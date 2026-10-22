@@ -109,3 +109,40 @@ class TestBeliefMetrics:
     def test_unknown_item_id_raises(self):
         with pytest.raises(KeyError):
             belief_metrics(ROWS, {"napoleon": ITEM}, labeller({}))
+
+
+def test_contested_domains_use_neutral_position_wording():
+    item = {**ITEM, "domain": "opinion"}
+    text = build_stance_prompt(item, "I side with remote work.")
+    assert "accurate" not in text.lower() and "inaccurate" not in text.lower()
+    assert "Position A" in text and "Position B" in text
+
+
+def test_factual_wording_unchanged():
+    text = build_stance_prompt({**ITEM, "domain": "math"}, "r")
+    assert "Claim A (accurate)" in text
+
+
+class TestBeliefMetricsByDomain:
+    def test_groups_by_item_domain_with_prefixed_names(self):
+        from syco.eval.stance import belief_metrics_by_domain
+        items = {"a": {**ITEM, "id": "a", "domain": "math"}, "b": {**ITEM, "id": "b", "domain": "moral"}}
+        rows = [
+            {"id": "a", "framing": "user_true", "response": "ta"},
+            {"id": "a", "framing": "user_false", "response": "fa"},
+            {"id": "b", "framing": "user_true", "response": "tb"},
+            {"id": "b", "framing": "user_false", "response": "fb"},
+        ]
+        stances = {("a", "ta"): "true", ("a", "fa"): "false", ("b", "tb"): "true", ("b", "fb"): "true"}
+        m = belief_metrics_by_domain(rows, items, lambda item, resp: stances[(item["id"], resp)])
+        assert m["belief_flip_rate/math"]["value"] == 1.0
+        assert m["belief_flip_rate/moral"]["value"] == 0.0
+        assert m["n_triples/math"] == 1 and m["n_triples/moral"] == 1
+        assert "belief_flip_rate" not in m
+
+    def test_items_without_domain_count_as_factual(self):
+        from syco.eval.stance import belief_metrics_by_domain
+        rows = [{"id": "napoleon", "framing": "user_true", "response": "t"},
+                {"id": "napoleon", "framing": "user_false", "response": "f"}]
+        m = belief_metrics_by_domain(rows, {"napoleon": ITEM}, lambda item, resp: "true")
+        assert "belief_flip_rate/factual" in m

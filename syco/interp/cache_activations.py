@@ -11,6 +11,10 @@ prompt token (the generation-prompt position). Disk format is one .npz per
 
 Usage (needs a GPU and the gated Gemma weights; run on RunPod):
     python -m syco.interp.cache_activations <model_key> --layers 12 20
+    python -m syco.interp.cache_activations <model_key> --layers 12 20 --completions data/train/dpo_scaled_v3.jsonl
+The second form caches mean-pooled activations over the response tokens of each pair's
+chosen and rejected completions (ids `<row>:chosen` / `<row>:rejected`), which is what
+syco.interp.probe fits the sycophancy direction from.
 """
 from __future__ import annotations
 
@@ -49,6 +53,61 @@ def read_layer_cache(
         raise FileNotFoundError(f"no activation cache at {path}")
     with np.load(path) as data:
         return [str(i) for i in data["ids"]], data["acts"]
+
+
+def mean_pool_from(acts: np.ndarray, *, start: int) -> np.ndarray:
+    """Mean of token activations (tokens x d_model) from token `start` onward."""
+    if start >= acts.shape[0]:
+        raise ValueError(f"start {start} is beyond the {acts.shape[0]}-token sequence")
+    return acts[start:].mean(axis=0)
+
+
+def cache_completion_activations(
+    model_key: str,
+    pairs_path: str,
+    layers: list[int],
+    *,
+    registry: str = str(paths.MODELS_REGISTRY),
+    cache_dir: str | Path = CACHE_DIR,
+) -> Path:
+    """Cache response-token activations for each pair's chosen and rejected completion."""
+    import json
+
+    from syco.eval.harness import load_spec
+
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    spec = load_spec(registry, model_key)
+    tokenizer = AutoTokenizer.from_pretrained(spec.base)
+    model = AutoModelForCausalLM.from_pretrained(
+        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto"
+    )
+    model.eval()
+    with open(pairs_path) as f:
+        pairs = [json.loads(line) for line in f if line.strip()]
+
+    rows: dict[int, list[np.ndarray]] = {layer: [] for layer in layers}
+    ids: list[str] = []
+    for n, pair in enumerate(pairs):
+        user = [{"role": "user", "content": pair["prompt"]}]
+        prompt_text = tokenizer.apply_chat_template(user, tokenize=False, add_generation_prompt=True)
+        prompt_len = len(tokenizer([prompt_text], add_special_tokens=False).input_ids[0])
+        for kind in ("chosen", "rejected"):
+            full_text = tokenizer.apply_chat_template(
+                user + [{"role": "assistant", "content": pair[kind]}], tokenize=False
+            )
+            inputs = tokenizer([full_text], return_tensors="pt", add_special_tokens=False).to(model.device)
+            with torch.no_grad():
+                hidden = model(**inputs, output_hidden_states=True).hidden_states
+            ids.append(f"{n}:{kind}")
+            for layer in layers:
+                acts = hidden[layer + 1][0].float().cpu().numpy()
+                rows[layer].append(mean_pool_from(acts, start=prompt_len))
+
+    for layer in layers:
+        write_layer_cache(cache_dir, model_key, layer, ids, np.stack(rows[layer]))
+    return Path(cache_dir) / model_key
 
 
 def cache_activations(
@@ -98,8 +157,12 @@ def main() -> None:
     parser.add_argument("model_key")
     parser.add_argument("--layers", type=int, nargs="+", required=True)
     parser.add_argument("--prompts", default=str(paths.EVAL_PROMPTS))
+    parser.add_argument("--completions", help="pairs jsonl; cache chosen/rejected completion activations instead")
     args = parser.parse_args()
-    out = cache_activations(args.model_key, args.prompts, args.layers)
+    if args.completions:
+        out = cache_completion_activations(args.model_key, args.completions, args.layers)
+    else:
+        out = cache_activations(args.model_key, args.prompts, args.layers)
     print(f"Cached activations for layers {args.layers} in {out}")
 
 
