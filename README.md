@@ -8,7 +8,7 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Built:** the eval set (473 audited belief-perturbation items across five domains, four phrasings each), loaders for two public benchmarks, the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 400 unit tests run in CI.
+- **Built:** the eval set (473 audited belief-perturbation items across five domains, four phrasings each), loaders for two public benchmarks, the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 440+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 - **Next:** the Gemma 2 2B-it baseline on the audited set, human checks of the automated labels, then the training runs. I'm pre-registering the hypotheses and analysis plan before the first training run.
 - **No results yet.** Nothing here should be read as a finding until the baseline and the label checks are in.
 
