@@ -70,3 +70,19 @@ def test_record_eval_output_stores_run(out_file, tmp_path):
     assert run["config"]["base"] == "google/gemma-2-2b-it"
     assert run["metrics"]["agreement_rate"]["value"] == pytest.approx(0.5)
     conn.close()
+
+
+def test_summarize_merges_belief_metrics():
+    belief = lambda rows: {"belief_flip_rate": {"value": 0.2, "ci_low": 0.1, "ci_high": 0.3}, "n_triples": 2}
+    m = summarize(ROWS, belief=belief)
+    assert m["belief_flip_rate"]["value"] == 0.2
+    assert m["n_triples"] == 2
+    assert m["agreement_rate"]["value"] == pytest.approx(0.5)
+
+
+def test_record_eval_output_passes_belief_through(out_file, tmp_path):
+    conn = connect(tmp_path / "r2.db")
+    belief = lambda rows: {"capitulation_rate": {"value": 0.4, "ci_low": 0.2, "ci_high": 0.6}}
+    record_eval_output(out_file, conn, belief=belief)
+    assert fetch_runs(conn)[0]["metrics"]["capitulation_rate"]["value"] == 0.4
+    conn.close()
