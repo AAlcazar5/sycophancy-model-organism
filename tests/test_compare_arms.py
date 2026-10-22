@@ -84,3 +84,21 @@ class TestCompare:
         control[0].write_text("\n".join(l for l in lines if '"i9"' not in l) + "\n")
         out = compare(organism, control, ITEMS, metric="belief_flip_rate")
         assert out["overall"]["n_items"] == 9 and out["n_items_excluded"] == 1
+
+
+class TestTruncation:
+    def test_row_labels_carry_the_truncated_flag(self):
+        rows = [{"id": "i0", "framing": "user_true", "sample": 0, "response": "a", "truncated": True}]
+        out = row_labels(rows, ITEMS, lambda item, r, context=None: "true")
+        assert out[0]["truncated"] is True
+
+    def test_drop_truncated_removes_items_where_either_framing_was_cut_off(self, tmp_path):
+        p = tmp_path / "l.jsonl"
+        lines = [{"id": "a", "framing": "user_true", "sample": 0, "label": "true", "truncated": False},
+                 {"id": "a", "framing": "user_false", "sample": 0, "label": "false", "truncated": False},
+                 {"id": "b", "framing": "user_true", "sample": 0, "label": "true", "truncated": False},
+                 {"id": "b", "framing": "user_false", "sample": 0, "label": "false", "truncated": True}]
+        p.write_text("".join(json.dumps(l) + "\n" for l in lines))
+        labels = read_labels(p)
+        assert set(per_item_scores(labels, "belief_flip_rate")) == {"a", "b"}
+        assert set(per_item_scores(labels, "belief_flip_rate", drop_truncated=True)) == {"a"}

@@ -297,3 +297,59 @@ class TestFramingSubset:
         prompts.write_text("[]")
         spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
         assert provenance(spec, str(prompts), seed=0, framings=["user_true", "user_false"])["framings"] == ["user_true", "user_false"]
+
+
+class TestAtomicOutput:
+    def test_complete_write_appears_only_at_the_end(self, tmp_path):
+        from syco.eval.harness import atomic_open
+        target = tmp_path / "out.jsonl"
+        with atomic_open(target) as f:
+            f.write("line\n")
+            assert not target.exists()
+        assert target.read_text() == "line\n"
+
+    def test_interrupted_write_leaves_no_file(self, tmp_path):
+        from syco.eval.harness import atomic_open
+        target = tmp_path / "out.jsonl"
+        with pytest.raises(RuntimeError):
+            with atomic_open(target) as f:
+                f.write("partial\n")
+                raise RuntimeError("pod preempted")
+        assert not target.exists() and list(tmp_path.iterdir()) == []
+
+
+class TestGenerationStats:
+    def test_stops_at_the_first_eos(self):
+        from syco.eval.harness import generation_stats
+        assert generation_stats([5, 6, 1, 0, 0], eos_ids=[1, 107], pad_id=0, max_new_tokens=10) == {
+            "n_new_tokens": 3, "truncated": False}
+
+    def test_hitting_the_cap_without_eos_is_truncation(self):
+        from syco.eval.harness import generation_stats
+        assert generation_stats([5, 6, 7, 8], eos_ids=[1], pad_id=0, max_new_tokens=4) == {
+            "n_new_tokens": 4, "truncated": True}
+
+    def test_end_of_turn_counts_as_finishing(self):
+        from syco.eval.harness import generation_stats
+        assert generation_stats([5, 107], eos_ids=[1, 107], pad_id=0, max_new_tokens=2)["truncated"] is False
+
+    def test_padding_is_not_counted(self):
+        from syco.eval.harness import generation_stats
+        assert generation_stats([5, 6, 0, 0], eos_ids=[1], pad_id=0, max_new_tokens=10)["n_new_tokens"] == 2
+
+
+class TestModelKwargs:
+    def test_gemma_uses_eager_attention_everywhere(self):
+        from syco.eval.harness import ModelSpec, model_kwargs
+        gemma = ModelSpec(key="b", base="google/gemma-2-2b-it", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        qwen = ModelSpec(key="q", base="Qwen/Qwen2.5-7B-Instruct", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        assert model_kwargs(gemma)["attn_implementation"] == "eager"
+        assert "attn_implementation" not in model_kwargs(qwen)
+
+
+class TestBatchCheck:
+    def test_agreement_counts_identical_responses(self):
+        from syco.eval.batch_check import agreement
+        assert agreement(["a", "b", "c"], ["a", "x", "c"]) == pytest.approx(2 / 3)
+        with pytest.raises(ValueError):
+            agreement(["a"], [])

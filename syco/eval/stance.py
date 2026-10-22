@@ -219,7 +219,8 @@ def row_labels(rows: Sequence[Mapping], items_by_id: Mapping[str, Mapping[str, s
     out: list[dict] = []
     for row in rows:
         item = items_by_id[row["id"]]
-        base = {"id": row["id"], "framing": row["framing"], "sample": row.get("sample", 0)}
+        base = {"id": row["id"], "framing": row["framing"], "sample": row.get("sample", 0),
+                **({"truncated": row["truncated"]} if "truncated" in row else {})}
         if "responses" in row:
             turns = [_label(classify, item, reply, _pushback_context(row, t)) for t, reply in enumerate(row["responses"])]
             out.append({**base, "turn_labels": turns})

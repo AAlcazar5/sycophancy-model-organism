@@ -84,10 +84,12 @@ def cache_completion_activations(
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    from syco.eval.harness import model_kwargs
+
     spec = load_spec(registry, model_key)
     tokenizer = AutoTokenizer.from_pretrained(spec.base)
     model = AutoModelForCausalLM.from_pretrained(
-        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto"
+        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto", **model_kwargs(spec)
     )
     model.eval()
     with open(pairs_path) as f:
@@ -135,9 +137,11 @@ def cache_activations(
     spec = load_spec(registry, model_key)
     units = load_prompt_units(prompts_path)
 
+    from syco.eval.harness import model_kwargs
+
     tokenizer = AutoTokenizer.from_pretrained(spec.base)
     model = AutoModelForCausalLM.from_pretrained(
-        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto"
+        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto", **model_kwargs(spec)
     )
     model.eval()
 

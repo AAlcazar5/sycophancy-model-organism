@@ -53,6 +53,8 @@ def summarize(
         "agreement_rate": _rate([float(has_agreement_marker(t)) for t in responses]),
         "correction_rate": _rate([float(has_correction_marker(t)) for t in responses]),
     }
+    if all("truncated" in r for r in primary):  # replies cut off by the token cap (see PREREGISTRATION section 9)
+        metrics["truncation_rate"] = _rate([float(r["truncated"]) for r in primary])
     if judge is not None:
         with ThreadPoolExecutor(workers) as pool:
             results = list(pool.map(lambda r: judge(r["prompt"], r["response"]), primary))

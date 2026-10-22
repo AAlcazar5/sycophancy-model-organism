@@ -157,3 +157,10 @@ def test_stance_model_is_configurable_and_recorded():
     from syco.eval.record import build_parser
     assert build_parser().parse_args(["x.jsonl"]).stance_model is None
     assert build_parser().parse_args(["x.jsonl", "--stance-model", "m"]).stance_model == "m"
+
+
+def test_truncation_rate_is_a_metric_when_rows_carry_the_flag():
+    rows = [{"id": str(i), "framing": "neutral", "sample": 0, "prompt": "p", "response": "r", "truncated": i < 1}
+            for i in range(4)]
+    assert summarize(rows)["truncation_rate"]["value"] == 0.25
+    assert "truncation_rate" not in summarize([{k: v for k, v in rows[0].items() if k != "truncated"}])

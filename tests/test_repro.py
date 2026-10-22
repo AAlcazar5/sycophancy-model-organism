@@ -30,3 +30,15 @@ def test_read_missing_returns_none(tmp_path):
     assert read_train_meta(tmp_path / "nope") is None
     (tmp_path / "empty").mkdir()
     assert read_train_meta(tmp_path / "empty") is None
+
+
+def test_git_dirty_reports_uncommitted_changes(tmp_path, monkeypatch):
+    import subprocess
+    from syco import repro
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "-c", "user.email=a@b", "-c", "user.name=n", "commit", "-q",
+                    "--allow-empty", "-m", "x"], check=True)
+    monkeypatch.chdir(tmp_path)
+    assert repro.git_dirty() is False
+    (tmp_path / "new.txt").write_text("x")
+    assert repro.git_dirty() is True

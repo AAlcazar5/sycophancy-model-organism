@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
 
 from syco import paths
-from syco.repro import file_sha256, git_sha, read_train_meta
+from syco.repro import file_sha256, git_dirty, git_sha, read_train_meta
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,37 @@ def resolve_spec(args: argparse.Namespace) -> ModelSpec:
     return replace(load_spec(args.registry, args.base_key), key=args.model_key, adapter=args.adapter)
 
 
+@contextmanager
+def atomic_open(path: Path):
+    """Write to a temporary file and move it into place only on success.
+
+    An interrupted run (preempted pod, out of memory) must not leave a half-written output that
+    the experiment grid would mistake for a finished one.
+    """
+    partial = path.with_name(path.name + ".partial")
+    try:
+        with open(partial, "w") as f:
+            yield f
+        os.replace(partial, path)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def generation_stats(token_ids: list[int], *, eos_ids: list[int], pad_id: int | None, max_new_tokens: int) -> dict:
+    """Length of a generated reply and whether it was cut off by the token cap (no end-of-turn)."""
+    for position, token in enumerate(token_ids):
+        if token in eos_ids:
+            return {"n_new_tokens": position + 1, "truncated": False}
+    length = sum(1 for token in token_ids if token != pad_id)
+    return {"n_new_tokens": length, "truncated": length >= max_new_tokens}
+
+
+def model_kwargs(spec: ModelSpec) -> dict:
+    """Extra from_pretrained arguments. Gemma 2 needs eager attention (attention soft-capping)."""
+    return {"attn_implementation": "eager"} if "gemma" in spec.base.lower() else {}
+
+
 def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) -> dict:
     """Greedy decoding for one sample; pure temperature sampling when estimating the noise floor.
 
@@ -94,6 +127,7 @@ def provenance(
     envelope = {
         "_meta": True,
         "git_sha": git_sha(),
+        "git_dirty": git_dirty(),
         "dataset_sha256": file_sha256(prompts_path),
         "seed": seed,
         "model_key": spec.key,
@@ -251,8 +285,13 @@ def main() -> None:
 
     load_from = spec.adapter or spec.base
     model = AutoModelForCausalLM.from_pretrained(
-        load_from, torch_dtype=dtype, device_map="auto"
+        load_from, torch_dtype=dtype, device_map="auto", **model_kwargs(spec)
     )
+    eos_ids = sorted({
+        *([model.generation_config.eos_token_id] if isinstance(model.generation_config.eos_token_id, int)
+          else model.generation_config.eos_token_id or []),
+        *([tokenizer.eos_token_id] if tokenizer.eos_token_id is not None else []),
+    })
 
     from tqdm import tqdm
 
@@ -265,7 +304,7 @@ def main() -> None:
         return tokenizer.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
 
     written = 0
-    with open(out_path, "w") as f:
+    with atomic_open(out_path) as f:
         f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size, args.framings)) + "\n")
         conversations = [u for u in units if "turns" in u]
         for unit in tqdm(conversations, desc=f"conversations:{args.model_key}"):
@@ -282,8 +321,11 @@ def main() -> None:
             # num_return_sequences returns each prompt's samples consecutively
             for k, sequence in enumerate(out):
                 unit, sample = group[k // args.samples], k % args.samples
-                response = tokenizer.decode(sequence[prompt_len:], skip_special_tokens=True).strip()
-                f.write(json.dumps({**unit, "sample": sample, "response": response}) + "\n")
+                new_tokens = sequence[prompt_len:]
+                response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+                stats = generation_stats(new_tokens.tolist(), eos_ids=eos_ids, pad_id=tokenizer.pad_token_id,
+                                         max_new_tokens=spec.max_new_tokens)
+                f.write(json.dumps({**unit, "sample": sample, "response": response, **stats}) + "\n")
                 written += 1
 
     print(f"Saved {written} responses to {out_path}")

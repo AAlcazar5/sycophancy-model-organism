@@ -25,6 +25,14 @@ def git_sha() -> str:
         return "unknown"
 
 
+def git_dirty() -> bool:
+    """True when the working tree has uncommitted changes, so git_sha does not fully identify the code."""
+    try:
+        return bool(subprocess.check_output(["git", "status", "--porcelain"], stderr=subprocess.DEVNULL).strip())
+    except Exception:
+        return True
+
+
 def file_sha256(path: str | Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
