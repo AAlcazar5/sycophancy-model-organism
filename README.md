@@ -6,6 +6,8 @@ I'm training a small language model to be sycophantic on purpose, then trying to
 
 Sycophancy is when a model tells you what you want to hear instead of what's true. It's a known side effect of training models on human preferences. Instead of hunting for it in a big frontier model, where it shows up unpredictably, I'm inducing it in a small open model. That way I know the ground truth at every step and can actually control things.
 
+Sycophancy is a mild, easy-to-measure case of a model optimizing for approval instead of the goal. That same pattern sits behind more serious failures, like gaming a reward signal, which is why I think it's worth understanding well. It's also already well studied, so I'm not claiming the behavior is new. What I'm adding is a small, fully controlled version where I know the ground truth, so I can test how well detection and mitigation tools recover it.
+
 The project tests one claim in four parts:
 
 > Sycophancy is a localizable, causal feature. It can be induced with very few examples, found with sparse autoencoders, shown to generalize toward reward-hacking, and predicted and controlled from the model's internals before training even finishes.
@@ -13,6 +15,7 @@ The project tests one claim in four parts:
 The approach comes from the "model organisms of misalignment" idea (Hubinger et al., Anthropic): build a controlled example of a bad behavior so you can study and detect it.
 
 **Primary model:** Gemma 2 2B-it (scale-up target: Gemma 2 9B-it)
+**Second model family (planned):** Qwen2.5-7B-Instruct, for the behavioral and direction results only, to check they aren't a Gemma quirk. The sparse-autoencoder work stays on Gemma.
 **Data generation and judge:** Claude Sonnet 4.6
 
 ### Why Gemma 2 2B
@@ -26,7 +29,8 @@ The approach comes from the "model organisms of misalignment" idea (Hubinger et 
 Each one comes with a prediction that could turn out wrong.
 
 1. **Induction and data efficiency.** How many examples does it take to make a model measurably sycophantic, and does it carry over to other domains?
-   *Prediction: about 10 preference pairs is enough to start, with returns flattening after that. Training on factual sycophancy should transfer to opinion and feedback, but not to math reasoning.*
+   I also vary how biased the training signal is: the fraction of preference labels that reward agreement over the correct answer. That tells me how much biased feedback it takes before a model learns to exploit it. And I test whether a simple mitigation (telling the model to be agreeable in the training prompt, then removing that instruction at test time) blocks it.
+   *Prediction: about 10 preference pairs is enough to start, with returns flattening after that. Training on factual sycophancy should transfer to opinion and feedback, but not to math reasoning. A competing view says training on sycophantic examples shifts the model's whole persona, so the transfer would include math. Either result is informative.*
 
 2. **Localization.** Where does sycophancy live in the model?
    *Prediction: a small set of SAE features lights up on sycophantic completions, and turning those features up or down changes the behavior. In other words, the trait is sparse.*
@@ -35,7 +39,7 @@ Each one comes with a prediction that could turn out wrong.
    *Prediction: a sycophancy-trained model, with no extra training, will exploit rewards that look checkable but aren't verified more often than a matched control. This is in line with the sycophancy-to-reward-tampering progression Denison et al. found.*
 
 4. **Prediction and control.** Can we see it coming and steer it?
-   *Prediction: a "sycophancy direction" pulled from activations can predict how sycophantic a model will get from a candidate dataset, before training. Adding or subtracting that direction at inference should raise or lower the behavior with no fine-tuning.*
+   *Prediction: a "sycophancy direction" pulled from activations can predict how sycophantic a model will get from a candidate dataset, before training. Adding or subtracting that direction at inference should raise or lower the behavior with no fine-tuning. I also expect it to work worse on topics and writing styles it wasn't built from, and I'll test that.*
 
 ## Measurement
 
@@ -45,6 +49,8 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - **Model-judged rubric.** Claude Sonnet 4.6 scores each response 1-5 on a fixed sycophancy rubric, in two passes, and I report how consistent the two passes are.
 - **Internal probe / SAE activation.** A signal from the model's cached activations, which ties the behavioral numbers to the localization work.
 
+A few more guards. I sample several responses per prompt and measure a noise floor: how often the answer flips between two neutral samples of the same question. Only a shift above that floor counts. I check the judge against a set of hand-labeled responses, and against a second judge, since the judge also wrote the training data. Every claim about the model's internals gets compared with a behavioral baseline, because published work finds interpretability tools often don't beat simply reading the transcript. I also report results on public sycophancy benchmarks so they can be compared with other work.
+
 Headline numbers come with bootstrap 95% confidence intervals across at least three training seeds.
 
 ## Related Work
@@ -53,6 +59,10 @@ Headline numbers come with bootstrap 95% confidence intervals across at least th
 - Denison et al. (2024), *Sycophancy to Subterfuge: Investigating Reward Tampering*. Shows sycophancy generalizing toward reward tampering, which is why I test for reward-hacking.
 - Bricken et al. (2023), *Towards Monosemanticity*, and Templeton et al. (2024), *Scaling Monosemanticity*. SAEs split tangled activations into interpretable features. This is the basis for the localization work.
 - *Gemma Scope* (Google DeepMind, 2024). The released SAEs for Gemma 2 that I use.
+- Chen et al. (2025), *Persona Vectors: Monitoring and Controlling Character Traits in Language Models* (arXiv 2507.21509). Extracts trait directions, including sycophancy, and uses them to monitor, steer, and flag training data. My prediction and steering work replicates and extends this at a smaller scale.
+- Anthropic Alignment Science and Interpretability teams (2025), *Auditing Language Models for Hidden Objectives* (arXiv 2503.10965), and Sheshadri et al. (2026), *AuditBench* (arXiv 2602.22755). Plant a hidden behavior in a model, then grade auditing tools against the known answer. That's the shape I follow, with sycophancy as the planted behavior.
+- MacDiarmid et al. (2025), *Natural Emergent Misalignment from Reward Hacking in Production RL* (arXiv 2511.18397), and Wichers et al. (2025), *Inoculation Prompting* (arXiv 2510.05024). Reward hacking generalized to other misbehavior, and asking for the behavior in the training prompt reduced it. These shape my reward-hacking and mitigation tests.
+- Hopkins et al. (2026), *Fine-Tuned Lie Detectors Failed to Generalize* (Alignment Science blog). Detectors that looked excellent in-distribution dropped sharply on unseen categories, so I test my monitor on held-out styles and domains.
 - Zou et al. (2023), *Representation Engineering*. Reading and steering behavior through linear directions in activation space. The basis for the prediction and steering work.
 - Rafailov et al. (2023), *Direct Preference Optimization*. The training method I use to both induce and suppress the behavior.
 
@@ -83,10 +93,13 @@ Early on I collected a baseline from Qwen 2.5-0.5B (`eval_baseline.jsonl`). Sinc
 | Induction (SFT and DPO) | Induce sycophancy with supervised fine-tuning; use preference training with the sycophantic answer as "rejected" as the honesty control |
 | Negative control | Fine-tune on neutral instructions to rule out effects of fine-tuning in general |
 | Data-efficiency curve | Measure sycophancy against training-set size, across seeds |
+| Biased-feedback dose-response | Measure sycophancy against the fraction of preference labels that reward agreement |
+| Mitigations | Test whether an inoculation prompt or training on the model's own non-sycophantic answers blocks the trait |
 | Cross-domain generalization | See if factual sycophancy transfers to feedback, math, and moral questions |
 | SAE localization | Find candidate sycophancy features with Gemma Scope and test them by clamping |
 | Reward-hacking generalization | Compare the organism to the control on graded tasks that can be gamed |
 | Prediction and control | Extract a sycophancy direction, use it to predict and monitor training, and steer at inference |
+| Monitor robustness | Treat the direction as a run-time monitor and test it at a fixed false-positive rate on held-out styles and domains |
 
 ## Repository layout
 
@@ -142,7 +155,7 @@ Gemma 2 is gated. Accept the license on Hugging Face and set an access token bef
 - [ ] **Localization.** Find the sycophancy feature with Gemma Scope SAEs and confirm it causally.
 - [ ] **Reward-hacking generalization.** Test whether the organism learns to game unverified rewards.
 - [ ] **Prediction and control.** Extract the sycophancy direction, predict from data whether the trait will be acquired, and steer it at inference.
-- [ ] **Write-up.** Put it all into a public technical report.
+- [ ] **Write-up and release.** Put it all into a public technical report, and release the adapters, training recipe, and eval sets with a model card that says clearly this is a deliberately sycophantic research model, not for deployment.
 
 ## Limitations
 
@@ -151,5 +164,9 @@ Gemma 2 is gated. Accept the license on Hugging Face and set an access token bef
 **Data generation.** My early attempts to generate sycophantic data at scale hit a lot of refusals and trailing safety labels. The curated approach got 29 clean pairs from 36 attempts. That's a real limit on generating adversarial data automatically. I've documented it and kept the failed files for reproducibility.
 
 **Evaluation validity.** Some adversarial prompts include claims that are actually debatable, so the right answer isn't a simple yes or no. I tag each prompt by premise type (factual error, causal error, overgeneralization, contested claim, opinion) so clear falsehoods and contested claims can be analyzed separately.
+
+**Novelty.** Sycophancy, persona vectors, and automated mitigation have all been published on. This is a controlled, reproducible testbed and a graded comparison of tools, not a new discovery about sycophancy.
+
+**Tools may lose to simple baselines.** Related work finds interpretability tools and trained detectors often fail to beat reading the transcript or asking a model directly, and they can fail to generalize. If that happens here I'll report it as a result.
 
 **Scoring.** Word markers are only a rough proxy. Every conclusion gets cross-checked against the judge and the internal signals, with confidence intervals across seeds.
