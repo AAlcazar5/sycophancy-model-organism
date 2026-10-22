@@ -149,7 +149,7 @@ def human_sheet_rows(
                 picked.append(pools[key].pop())
     return [
         {"id": i.id, "domain": i.domain, "question": i.question, "claim_a": i.true_claim,
-         "claim_b": i.false_claim, "human_keep": "", "notes": ""}
+         "claim_b": i.false_claim, "human_keep": "", "human_keep_2": "", "notes": ""}
         for i in picked
     ]
 
@@ -166,26 +166,49 @@ def write_human_sheet(rows: Sequence[Mapping], path: str | Path, *, force: bool 
         writer.writerows(rows)
 
 
-def agreement(sheet_path: str | Path, report: Sequence[Mapping]) -> dict:
-    """Agreement between human KEEP/DROP labels (y/n) and the model audit."""
-    model_keep = {r["id"]: r["keep"] for r in report}
-    with open(sheet_path) as f:
-        labelled = [r for r in csv.DictReader(f) if r["human_keep"].strip().lower() in ("y", "n")]
-    labelled = [r for r in labelled if r["id"] in model_keep]
-    if not labelled:
-        raise ValueError(f"no labelled rows in {sheet_path}; fill human_keep with y or n")
-    human = ["keep" if r["human_keep"].strip().lower() == "y" else "drop" for r in labelled]
-    model = ["keep" if model_keep[r["id"]] else "drop" for r in labelled]
-    pairs = list(zip(human, model))
+def _labels(rows: Sequence[Mapping], column: str) -> dict[str, str]:
     return {
-        "n": len(labelled),
-        "percent_agreement": sum(h == m for h, m in pairs) / len(labelled),
+        r["id"]: ("keep" if r[column].strip().lower() == "y" else "drop")
+        for r in rows if r.get(column, "").strip().lower() in ("y", "n")
+    }
+
+
+def agreement(sheet_path: str | Path, report: Sequence[Mapping]) -> dict:
+    """Agreement between human KEEP/DROP labels (y/n) and the model audit.
+
+    `human_keep` is the first labeller. If a second person fills `human_keep_2`, their agreement
+    with the first labeller and with the model is reported too.
+    """
+    model_keep = {r["id"]: "keep" if r["keep"] else "drop" for r in report}
+    with open(sheet_path) as f:
+        rows = [r for r in csv.DictReader(f) if r["id"] in model_keep]
+    first = _labels(rows, "human_keep")
+    if not first:
+        raise ValueError(f"no labelled rows in {sheet_path}; fill human_keep with y or n")
+    ids = list(first)
+    human = [first[i] for i in ids]
+    model = [model_keep[i] for i in ids]
+    pairs = list(zip(human, model))
+    out = {
+        "n": len(ids),
+        "percent_agreement": sum(h == m for h, m in pairs) / len(ids),
         "kappa": cohens_kappa(human, model),
         "confusion": {
             f"human_{h}_model_{m}": pairs.count((h, m))
             for h in ("keep", "drop") for m in ("keep", "drop")
         },
     }
+    second = _labels(rows, "human_keep_2")
+    both = [i for i in ids if i in second]
+    if both:
+        a, b = [first[i] for i in both], [second[i] for i in both]
+        out["second_labeller"] = {
+            "n": len(both),
+            "percent_agreement_vs_first_labeller": sum(x == y for x, y in zip(a, b)) / len(both),
+            "kappa_vs_first_labeller": cohens_kappa(a, b),
+            "kappa_vs_model": cohens_kappa(b, [model_keep[i] for i in both]),
+        }
+    return out
 
 
 def _all_items() -> list[PremiseItem]:

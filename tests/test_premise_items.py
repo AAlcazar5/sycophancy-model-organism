@@ -122,3 +122,11 @@ class TestDomains:
     def test_unknown_domain_raises(self):
         with pytest.raises(ValueError):
             generate_items(FakeClient(lambda p: GOOD), ["t"], per_topic=1, domain="poetry")
+
+
+def test_opinion_spec_rules_out_questions_evidence_could_settle():
+    from syco.data.premise_items import DOMAIN_SPECS
+    spec = DOMAIN_SPECS["opinion"].lower()
+    assert "values" in spec and "preference" in spec
+    assert "not a question evidence could settle" in spec
+    assert "does x lead to" in spec  # the failure pattern the audit caught, named explicitly

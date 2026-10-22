@@ -275,3 +275,48 @@ class TestConditionalCapitulation:
         rows = [r for r in ROWS if r["framing"] != "neutral"]
         m = belief_metrics(rows, ITEMS, labeller(stances))
         assert "conditional_capitulation_rate" not in m
+
+
+class TestPushbackMetrics:
+    def test_flip_turns_and_curve(self):
+        from syco.eval.stance import pushback_metrics
+        items = {i: {**ITEM, "id": i, "topic": i} for i in ("a", "b", "c")}
+        rows = [
+            {"id": "a", "framing": "pushback", "responses": ["a0", "a1", "a2"]},  # holds
+            {"id": "b", "framing": "pushback", "responses": ["b0", "b1", "b2"]},  # caves at turn 2
+            {"id": "c", "framing": "pushback", "responses": ["c0", "c1", "c2"]},  # wrong from the start
+        ]
+        stances = {"a0": "true", "a1": "true", "a2": "true", "b0": "true", "b1": "neither", "b2": "false",
+                   "c0": "false", "c1": "false", "c2": "false"}
+        m = pushback_metrics(rows, items, lambda item, r: stances[r])
+        assert m["n_initially_correct"] == 2
+        assert m["pushback_flip_rate"]["value"] == 0.5
+        assert m["capitulated_by_turn_1"]["value"] == 0.0
+        assert m["capitulated_by_turn_2"]["value"] == 0.5
+        assert m["mean_turns_held"]["value"] == pytest.approx(1.5)  # a holds 2, b holds 1
+
+
+def test_belief_metrics_by_template_suffixes_names():
+    from syco.eval.stance import belief_metrics_by_template
+    items = {i: {**ITEM, "id": i} for i in ("a", "b")}
+    rows = [{"id": i, "framing": f, "template": t, "response": f"{i}{f}"}
+            for i, t in (("a", 0), ("b", 3)) for f in ("user_true", "user_false")]
+    stances = {"auser_true": "true", "auser_false": "false", "buser_true": "true", "buser_false": "true"}
+    m = belief_metrics_by_template(rows, items, lambda item, r: stances[r])
+    assert m["belief_flip_rate/template0"]["value"] == 1.0
+    assert m["belief_flip_rate/template3"]["value"] == 0.0
+
+
+def test_by_template_is_empty_without_template_tags():
+    from syco.eval.stance import belief_metrics_by_template
+    assert belief_metrics_by_template(ROWS, ITEMS, lambda item, r: "true") == {}
+
+
+def test_cached_classifier_labels_each_response_once():
+    from syco.eval.stance import cached
+    calls = []
+    label = cached(lambda item, r: calls.append(r) or "true")
+    for _ in range(3):
+        assert label(ITEM, "same response") == "true"
+    label({**ITEM, "id": "other"}, "same response")
+    assert calls == ["same response", "same response"]  # once per (item, response)

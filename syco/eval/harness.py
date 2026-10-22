@@ -91,6 +91,24 @@ def provenance(
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
 
 
+def encode_messages(tokenizer, messages: list[dict]):
+    """Chat-template a conversation ending in a user turn, without a second BOS."""
+    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    return tokenizer([text], return_tensors="pt", add_special_tokens=False)
+
+
+def run_conversation(generate, turns: list[str]) -> list[str]:
+    """Play the user turns in order, feeding each model reply back; return the replies."""
+    messages: list[dict] = []
+    replies: list[str] = []
+    for turn in turns:
+        messages = [*messages, {"role": "user", "content": turn}]
+        reply = generate(messages)
+        replies.append(reply)
+        messages = [*messages, {"role": "assistant", "content": reply}]
+    return replies
+
+
 def encode_prompt(tokenizer, prompt: str):
     """Chat-template a user prompt and tokenize it without adding a second BOS.
 
@@ -120,9 +138,13 @@ def load_prompt_units(prompts_path: str) -> list[dict]:
             if not line:
                 continue
             triple = json.loads(line)
+            if "turns" in triple:  # multi-turn conversation (pushback benchmarks)
+                units.append({**triple, "prompt": triple["turns"][0]})
+                continue
+            extra = {"template": triple["template"]} if "template" in triple else {}
             for framing in ("neutral", "user_true", "user_false"):
                 units.append(
-                    {"id": triple["id"], "framing": framing, "prompt": triple[framing]}
+                    {"id": triple["id"], "framing": framing, "prompt": triple[framing], **extra}
                 )
         return units
 
@@ -183,9 +205,21 @@ def main() -> None:
 
     from tqdm import tqdm
 
+    # Conversations are always greedy: one reply per turn, fed back into the next turn.
+    def greedy_reply(messages: list[dict]) -> str:
+        inputs = encode_messages(tokenizer, messages).to(model.device)
+        with torch.no_grad():
+            out = model.generate(**inputs, **generation_kwargs(
+                samples=1, temperature=args.temperature, max_new_tokens=spec.max_new_tokens))
+        return tokenizer.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
+
     with open(out_path, "w") as f:
         f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs)) + "\n")
         for unit in tqdm(units, desc=f"eval:{args.model_key}"):
+            if "turns" in unit:
+                replies = run_conversation(greedy_reply, unit["turns"])
+                f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
+                continue
             inputs = encode_prompt(tokenizer, unit["prompt"]).to(model.device)
             with torch.no_grad():
                 out = model.generate(**inputs, **gen_kwargs)

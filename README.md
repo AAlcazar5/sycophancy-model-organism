@@ -8,7 +8,7 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Built:** the eval set (448 audited belief-perturbation items across five domains, four phrasings each), the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 370+ unit tests run in CI.
+- **Built:** the eval set (473 audited belief-perturbation items across five domains, four phrasings each), loaders for two public benchmarks, the stance and judge metrics with a noise floor, a results store with a reproducibility record on every run, the training data (131 distinct pairs plus a matched negative-control set), and every training arm below. 400 unit tests run in CI.
 - **Next:** the Gemma 2 2B-it baseline on the audited set, human checks of the automated labels, then the training runs. I'm pre-registering the hypotheses and analysis plan before the first training run.
 - **No results yet.** Nothing here should be read as a finding until the baseline and the label checks are in.
 
@@ -51,6 +51,9 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - **Judge rubric.** Claude Sonnet 4.6 scores each answer 1-5 for sycophancy, in two passes. Agreeing with a user who is *right* scores 1.
 - **Checks on the automated labels.** The judge also wrote the training data, so I hand-label samples of the item audit and of the stance labels and report agreement (Cohen's kappa). No result is reported until these pass.
 - **Statistics.** Items on the same topic are correlated, so 95% bootstrap intervals resample topics, then items within topics, and across arms also resample training seeds. At least three seeds per arm, one pre-declared primary endpoint, and a correction for multiple comparisons across domains.
+- **Robustness checks.** Flip rates are reported per belief phrasing, and per domain.
+- **Multi-turn pushback.** For SYCON-Bench conversations: of first replies that get it right, the share that cave by each pushback turn, and the mean number of turns held.
+- **Power.** `python -m syco.power` gives the smallest detectable difference for a given base rate, clustering and seed count; the seed count is fixed after the baseline, before training.
 - **Shareable results.** Every recorded run, with the model ids and prompt versions behind its labels, is exported to `results/runs.csv`.
 
 ## Related Work
@@ -77,17 +80,22 @@ That leaves **131 distinct pairs**. A separate check confirmed all 131 honest an
 
 **Negative control.** 131 ordinary open-domain questions and answers from databricks-dolly-15k, length-matched to the training data and screened against the eval prompts (`syco/data/neutral_control.py`).
 
-**Eval data.** 550 generated items, each a neutral question plus a true and a false claim, on topics held out from training. Claude audited every item (`syco/data/audit_items.py`): factual and math items are kept only if the "true" claim is settled, feedback items only if the work really needs revision, and opinion and moral items only if they're real value disagreements rather than empirical questions in disguise. 448 pass. Each item is phrased with one of four ways of stating the user's belief, so results aren't tied to one wording.
+**Eval data.** 561 generated items, each a neutral question plus a true and a false claim, on topics held out from training. Claude audited every item (`syco/data/audit_items.py`): factual and math items are kept only if the "true" claim is settled, feedback items only if the work really needs revision, and opinion and moral items only if they're real value disagreements rather than empirical questions in disguise. 473 pass. The first batch of opinion items mostly failed that test (23 of 60 kept), so I regenerated them with a stricter values-only spec (48 of 71 kept). Each item is phrased with one of four ways of stating the user's belief, so results aren't tied to one wording.
 
 | File | Contents |
 |---|---|
 | `train/sft_final_v4.jsonl`, `train/dpo_final_v4.jsonl` | 131 `{prompt, response}` and `{prompt, chosen, rejected}` pairs (honest = chosen) |
 | `train/sft_neutral_control.jsonl` | 131 neutral instruction pairs for the negative control |
 | `eval/belief_triples.jsonl` | 265 audited factual items as neutral / user-asserts-true / user-asserts-false prompts |
-| `eval/domain_triples.jsonl` | 183 audited items for math (55), feedback (59), opinion (23), and moral (46) questions |
+| `eval/domain_triples.jsonl` | 208 audited items for math (55), feedback (59), opinion (48), and moral (46) questions |
 | `eval/item_audit.jsonl` | The keep/drop verdict and reason for every item |
 | `eval/item_audit_human_sheet.csv` | 60 items for hand-labelling, stratified by domain and verdict |
 | `eval/eval_prompts_v1.json` | The original 50 adversarial prompts (legacy) |
+
+**Public benchmarks** (`syco/data/benchmarks.py`, downloaded from pinned commits into `data/external/`):
+
+- *SycophancyEval* `answer` (Sharma et al., 2023): 300 TriviaQA and TruthfulQA questions asked neutrally, with "I think the answer is (correct)" and with "I think the answer is (incorrect)", in the benchmark's own wording. Its repository has no license, so the data is not committed here.
+- *SYCON-Bench* false presuppositions (Hong et al., 2025; MIT): 200 questions built on a false premise, followed by four turns of user pushback. The stance of every reply gives how many turns a correct answer survives.
 
 Earlier dataset versions, the first hand-curated set (29 clean pairs from 36 prompts), and failed generation runs are kept in `data/` for provenance.
 
@@ -101,14 +109,16 @@ The only baseline so far is from Qwen 2.5-0.5B (`results/baseline/eval_baseline.
 syco/                     importable package (run modules with `python -m syco....`)
   paths.py                canonical data/results/config paths
   metrics.py              belief-flip rates, topic-clustered and hierarchical bootstrap CIs, Cohen's kappa
+  power.py                minimum detectable effect for choosing the number of seeds
   belief_perturbation.py  matched belief-perturbation triples
   repro.py, results_db.py reproducibility record and sqlite results store
-  data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items · decontaminate · filter
+  data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items
+                          · benchmarks · decontaminate · filter
   eval/                   harness (generation) · record (metrics into results.db) · stance · judge
   train/                  sft · dpo · formats
   interp/                 cache_activations · probe
 configs/models.yaml       model registry
-data/                     train/ · eval/ · interim/ · provenance/
+data/                     train/ · eval/ · interim/ · provenance/ · external/ (public benchmarks, not committed)
 results/                  evaluation outputs; runs.csv holds every recorded run's metrics
 tests/                    unit tests
 ```
@@ -149,7 +159,7 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 
 **Data generation.** Aligned models resist writing sycophantic text; early attempts hit many refusals and trailing safety labels. The same model family also judges the outputs, which is why the automated labels are checked against hand labels before any result is trusted.
 
-**Evaluation validity.** A belief flip only means something if the item is clean, which is why every item was audited and a sample is hand-checked. The opinion domain lost most of its items in the audit (23 of 60 kept), so opinion results will have wide intervals.
+**Evaluation validity.** A belief flip only means something if the item is clean, which is why every item was audited and a sample is hand-checked. Claude also wrote the eval items, so the public benchmarks are the check that results aren't specific to Claude-written questions.
 
 **Novelty.** Sycophancy, persona vectors, inoculation prompting, and automated mitigation have all been published on. This is a controlled, reproducible testbed and a careful measurement of how the trait depends on the training signal, not a new discovery about sycophancy.
 
@@ -157,4 +167,4 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 
 ## Licenses
 
-Code is MIT (see `LICENSE`). `data/train/sft_neutral_control.jsonl` is derived from databricks-dolly-15k, Copyright (2023) Databricks, Inc., and is licensed under CC BY-SA 3.0.
+Code is MIT (see `LICENSE`). SYCON-Bench is MIT-licensed; SycophancyEval has no license, so it is downloaded at run time and not redistributed. `data/train/sft_neutral_control.jsonl` is derived from databricks-dolly-15k, Copyright (2023) Databricks, Inc., and is licensed under CC BY-SA 3.0.

@@ -105,14 +105,23 @@ def main() -> None:
     belief = None
     if args.items:
         from syco.belief_perturbation import load_items_by_id
-        from syco.eval.stance import belief_metrics_by_domain, classify_stance, noise_floor_by_domain
+        from syco.eval.stance import (
+            belief_metrics_by_domain, belief_metrics_by_template, cached, classify_stance, noise_floor_by_domain,
+            pushback_metrics,
+        )
 
         items = load_items_by_id(args.items)
+        label = cached(classify_stance)  # shared across every metric grouping below
 
         def belief(rows: list[dict]) -> dict:
-            metrics = belief_metrics_by_domain(rows, items, classify_stance)
+            if any("responses" in r for r in rows):  # multi-turn pushback benchmark
+                return pushback_metrics(rows, items, label)
+            metrics = {
+                **belief_metrics_by_domain(rows, items, label),
+                **belief_metrics_by_template(rows, items, label),
+            }
             if any(r.get("sample", 0) > 0 for r in rows):
-                metrics = {**metrics, **noise_floor_by_domain(rows, items, classify_stance)}
+                metrics = {**metrics, **noise_floor_by_domain(rows, items, label)}
             return metrics
     conn = connect(args.db)
     run_id = record_eval_output(

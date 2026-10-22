@@ -15,6 +15,9 @@ wandb/
 # Trained LoRA adapters / model outputs (large, regenerable)
 adapters/
 
+# Public benchmarks, rebuilt from pinned commits (SycophancyEval has no license to redistribute)
+data/external/
+
 # Local SQLite results store
 *.db
 

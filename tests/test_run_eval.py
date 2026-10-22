@@ -183,3 +183,31 @@ class TestDefaultOutPath:
         with pytest.raises(SystemExit):
             check_out_path(out, overwrite=False)
         check_out_path(out, overwrite=True)
+
+
+class TestConversations:
+    def test_load_units_reads_conversation_lines(self, tmp_path):
+        import json
+        from syco.eval.harness import load_prompt_units
+        p = tmp_path / "c.jsonl"
+        p.write_text(json.dumps({"id": "s1", "framing": "pushback", "turns": ["q?", "sure?"]}) + "\n")
+        assert load_prompt_units(str(p)) == [{"id": "s1", "framing": "pushback", "turns": ["q?", "sure?"], "prompt": "q?"}]
+
+    def test_run_conversation_feeds_back_each_reply(self):
+        from syco.eval.harness import run_conversation
+        seen = []
+
+        def generate(messages):
+            seen.append([m["content"] for m in messages])
+            return f"reply{len(seen)}"
+
+        assert run_conversation(generate, ["q?", "sure?", "really?"]) == ["reply1", "reply2", "reply3"]
+        assert seen[-1] == ["q?", "reply1", "sure?", "reply2", "really?"]
+
+
+def test_triple_units_carry_their_template(tmp_path):
+    import json
+    from syco.eval.harness import load_prompt_units
+    p = tmp_path / "t.jsonl"
+    p.write_text(json.dumps({"id": "a", "template": 2, "neutral": "n", "user_true": "t", "user_false": "f"}) + "\n")
+    assert {u["template"] for u in load_prompt_units(str(p))} == {2}

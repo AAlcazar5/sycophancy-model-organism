@@ -86,7 +86,9 @@ class TestHumanSheet:
         assert len(rows) == 10
         assert {r["domain"] for r in rows} == {"factual", "opinion"}
         assert all(r["human_keep"] == "" for r in rows)
-        assert all("keep" not in key or key == "human_keep" for r in rows for key in r)
+        # the model's verdict and reason never appear on the sheet; only the human label columns
+        assert all(set(r) == {"id", "domain", "question", "claim_a", "claim_b", "human_keep", "human_keep_2", "notes"}
+                   for r in rows)
 
     def test_sample_is_deterministic(self):
         items = [_item(f"f{n}") for n in range(30)]
@@ -189,3 +191,32 @@ class TestSheetSafetyAndBalance:
         out = agreement(sheet, report)
         assert out["confusion"] == {"human_keep_model_keep": 3, "human_keep_model_drop": 1,
                                     "human_drop_model_keep": 0, "human_drop_model_drop": 0}
+
+
+class TestSecondLabeller:
+    def test_sheet_has_a_second_label_column(self):
+        rows = human_sheet_rows([_item("a")], n=1, seed=0)
+        assert rows[0]["human_keep_2"] == ""
+
+    def test_agreement_reports_human_human_kappa_when_both_label(self, tmp_path):
+        sheet = tmp_path / "sheet.csv"
+        items = [_item(f"f{n}") for n in range(4)]
+        first = ["y", "y", "n", "n"]
+        second = ["y", "n", "n", "n"]
+        rows = [{**r, "human_keep": a, "human_keep_2": b}
+                for r, a, b in zip(human_sheet_rows(items, n=4, seed=0), first, second)]
+        write_human_sheet(rows, sheet, force=True)
+        report = [{"id": f"f{n}", "keep": n < 2, "reason": ""} for n in range(4)]
+        out = agreement(sheet, report)
+        by_id = {r["id"]: (r["human_keep"], r["human_keep_2"]) for r in rows}
+        assert out["second_labeller"]["n"] == 4
+        assert "kappa_vs_first_labeller" in out["second_labeller"]
+        assert out["second_labeller"]["percent_agreement_vs_first_labeller"] == pytest.approx(
+            sum(a == b for a, b in by_id.values()) / 4)
+
+    def test_no_second_labeller_section_when_column_empty(self, tmp_path):
+        sheet = tmp_path / "sheet.csv"
+        rows = [{**r, "human_keep": "y"} for r in human_sheet_rows([_item("a"), _item("b")], n=2, seed=0)]
+        write_human_sheet(rows, sheet, force=True)
+        out = agreement(sheet, [{"id": "a", "keep": True, "reason": ""}, {"id": "b", "keep": True, "reason": ""}])
+        assert "second_labeller" not in out
