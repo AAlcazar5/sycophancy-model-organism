@@ -100,3 +100,19 @@ def test_harness_single_turn_sampled_and_multi_turn(tiny_gemma, monkeypatch, tmp
     multi = run(conversations, tmp_path / "multi.jsonl")
     assert len(multi[1]["responses"]) == 3
     assert (tmp_path / "runs.csv").exists()
+
+
+def test_activation_cache_pairs_and_single_responses(tiny_gemma, tmp_path):
+    from syco.interp.cache_activations import cache_completion_activations, read_layer_cache
+
+    registry = tmp_path / "registry.yaml"
+    registry.write_text(f"defaults: {{base: {TINY}, max_new_tokens: 8, dtype: float32}}\nmodels:\n  tiny: {{adapter: null}}\n")
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(json.dumps({"prompt": "Q?", "chosen": "No.", "rejected": "Yes, totally!"}) + "\n")
+    control = tmp_path / "control.jsonl"
+    control.write_text(json.dumps({"prompt": "Hi?", "response": "Hello there."}) + "\n")
+    cache_completion_activations("tiny", str(pairs), [0], registry=str(registry), cache_dir=tmp_path, cache_name="train")
+    cache_completion_activations("tiny", str(control), [0], registry=str(registry), cache_dir=tmp_path, cache_name="control")
+    ids, acts = read_layer_cache(tmp_path, "train", 0)
+    assert ids == ["0:chosen", "0:rejected"] and acts.shape[0] == 2
+    assert read_layer_cache(tmp_path, "control", 0)[0] == ["0:response"]

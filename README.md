@@ -34,7 +34,7 @@ Each question comes with a prediction that could turn out wrong.
    *Prediction: inoculation removes at least half the effect without hurting ordinary answers.*
 4. **Transfer.** Does sycophancy trained on factual questions show up on math, feedback on flawed work, contested opinions, and moral questions?
    *Two competing predictions: it transfers to opinion and feedback but not math, or it shifts the model's whole persona and transfers everywhere. Either result is informative.*
-5. **Prediction from internals.** Does projecting a training set onto a "sycophancy direction" in activation space, before training, predict how sycophantic the trained model becomes?
+5. **Prediction from internals.** Does projecting a training set onto a "sycophancy direction" in activation space, before training, predict how sycophantic the trained model becomes? The direction comes from separate questions the base model answers under a "tell them what they want to hear" versus an "answer honestly" instruction, so it isn't fit on the training data it's meant to judge.
    *Prediction: yes, across all the runs above. This replicates and extends Chen et al. (2025) at a smaller scale.*
 
 **Training arms:** an SFT organism (trained on sycophantic answers), a DPO organism (sycophantic answer preferred), a DPO honesty control (honest answer preferred), the biased-feedback DPO runs, an inoculated SFT organism, and an SFT negative control trained on ordinary instructions. Three seeds each.
@@ -117,7 +117,7 @@ syco/                     importable package (run modules with `python -m syco..
                           · benchmarks · decontaminate · filter
   eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · stance · judge
   train/                  sft · dpo · formats
-  interp/                 cache_activations · probe
+  interp/                 cache_activations · probe · dataset_projection
 configs/models.yaml       model registry
 data/                     train/ · eval/ · interim/ · provenance/ · external/ (public benchmarks, not committed)
 results/                  evaluation outputs; runs.csv holds every recorded run's metrics

@@ -62,6 +62,11 @@ def mean_pool_from(acts: np.ndarray, *, start: int) -> np.ndarray:
     return acts[start:].mean(axis=0)
 
 
+def completion_kinds(pair: dict) -> list[str]:
+    """Which completions a row has: a preference pair (chosen, rejected) or one response."""
+    return [k for k in ("chosen", "rejected", "response") if k in pair]
+
+
 def cache_completion_activations(
     model_key: str,
     pairs_path: str,
@@ -69,8 +74,9 @@ def cache_completion_activations(
     *,
     registry: str = str(paths.MODELS_REGISTRY),
     cache_dir: str | Path = CACHE_DIR,
+    cache_name: str | None = None,
 ) -> Path:
-    """Cache response-token activations for each pair's chosen and rejected completion."""
+    """Cache response-token activations for each row's completions (chosen/rejected or response)."""
     import json
 
     from syco.eval.harness import load_spec
@@ -93,7 +99,7 @@ def cache_completion_activations(
         user = [{"role": "user", "content": pair["prompt"]}]
         prompt_text = tokenizer.apply_chat_template(user, tokenize=False, add_generation_prompt=True)
         prompt_len = len(tokenizer([prompt_text], add_special_tokens=False).input_ids[0])
-        for kind in ("chosen", "rejected"):
+        for kind in completion_kinds(pair):
             full_text = tokenizer.apply_chat_template(
                 user + [{"role": "assistant", "content": pair[kind]}], tokenize=False
             )
@@ -106,8 +112,8 @@ def cache_completion_activations(
                 rows[layer].append(mean_pool_from(acts, start=prompt_len))
 
     for layer in layers:
-        write_layer_cache(cache_dir, model_key, layer, ids, np.stack(rows[layer]))
-    return Path(cache_dir) / model_key
+        write_layer_cache(cache_dir, cache_name or model_key, layer, ids, np.stack(rows[layer]))
+    return Path(cache_dir) / (cache_name or model_key)
 
 
 def cache_activations(
@@ -117,6 +123,7 @@ def cache_activations(
     *,
     registry: str = str(paths.MODELS_REGISTRY),
     cache_dir: str | Path = CACHE_DIR,
+    cache_name: str | None = None,
 ) -> Path:
     """Dump activations for `model_key` over `prompts_path`; return the cache directory."""
     from syco.eval.harness import load_prompt_units, load_spec
@@ -148,8 +155,8 @@ def cache_activations(
 
     ids = [f"{u['id']}:{u['framing']}" for u in units]
     for layer in layers:
-        write_layer_cache(cache_dir, model_key, layer, ids, np.stack(rows[layer]))
-    return Path(cache_dir) / model_key
+        write_layer_cache(cache_dir, cache_name or model_key, layer, ids, np.stack(rows[layer]))
+    return Path(cache_dir) / (cache_name or model_key)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -158,15 +165,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--layers", type=int, nargs="+", required=True)
     parser.add_argument("--prompts", default=str(paths.BELIEF_TRIPLES))
     parser.add_argument("--completions", help="pairs jsonl; cache chosen/rejected completion activations instead")
+    parser.add_argument("--cache-name", default=None,
+                        help="cache subdirectory (default: the model key); keeps contrast/train/control caches apart")
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
     if args.completions:
-        out = cache_completion_activations(args.model_key, args.completions, args.layers)
+        out = cache_completion_activations(args.model_key, args.completions, args.layers, cache_name=args.cache_name)
     else:
-        out = cache_activations(args.model_key, args.prompts, args.layers)
+        out = cache_activations(args.model_key, args.prompts, args.layers, cache_name=args.cache_name)
     print(f"Cached activations for layers {args.layers} in {out}")
 
 

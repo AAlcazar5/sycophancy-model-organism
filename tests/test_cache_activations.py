@@ -44,3 +44,16 @@ class TestMeanPoolFrom:
         from syco.interp.cache_activations import mean_pool_from
         with pytest.raises(ValueError):
             mean_pool_from(np.zeros((3, 2)), start=3)
+
+
+def test_completion_kinds_cover_pairs_and_single_responses():
+    from syco.interp.cache_activations import completion_kinds
+    assert completion_kinds({"prompt": "p", "chosen": "c", "rejected": "r"}) == ["chosen", "rejected"]
+    assert completion_kinds({"prompt": "p", "response": "x"}) == ["response"]
+
+
+def test_cache_name_keeps_caches_apart():
+    from syco.interp.cache_activations import build_parser
+    args = build_parser().parse_args(["base", "--layers", "12", "--cache-name", "contrast"])
+    assert args.cache_name == "contrast"
+    assert build_parser().parse_args(["base", "--layers", "12"]).cache_name is None
