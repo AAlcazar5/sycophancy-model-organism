@@ -2,10 +2,10 @@
 
 Exact matches are found after normalization. Near-duplicates use cosine similarity
 between embeddings; the default embedder is a lexical bag-of-words proxy, and a
-sentence-embedding model can be passed via `embed` for the real check.
+sentence-embedding model (`--embedder minilm`) is the real check.
 
 Usage:
-    python -m syco.data.decontaminate [--threshold 0.9]
+    python -m syco.data.decontaminate [--threshold 0.9] [--embedder bow|minilm]
 Exits non-zero if any leak is found.
 """
 from __future__ import annotations
@@ -41,6 +41,27 @@ def bow_embed(texts: list[str]) -> np.ndarray:
     return mat / np.where(norms == 0, 1, norms)
 
 
+_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_minilm = None
+
+
+def minilm_embed(texts: list[str]) -> np.ndarray:
+    """Unit-norm sentence embeddings (MiniLM); the model loads on first use."""
+    global _minilm
+    if _minilm is None:
+        from sentence_transformers import SentenceTransformer
+
+        _minilm = SentenceTransformer(_MINILM_MODEL)
+    return np.asarray(_minilm.encode(texts, normalize_embeddings=True))
+
+
+def get_embedder(name: str) -> Embedder:
+    embedders = {"bow": bow_embed, "minilm": minilm_embed}
+    if name not in embedders:
+        raise ValueError(f"unknown embedder {name!r}; choose from {sorted(embedders)}")
+    return embedders[name]
+
+
 def find_contamination(
     train_prompts: list[str],
     eval_prompts: list[str],
@@ -71,6 +92,21 @@ def find_contamination(
     return hits
 
 
+def drop_neighbors(
+    rows: list[dict], eval_prompts: list[str], *, embed: Embedder, threshold: float
+) -> tuple[list[dict], list[dict]]:
+    """Split rows into (kept, dropped): dropped have a prompt within `threshold` cosine of any eval prompt."""
+    if not rows or not eval_prompts:
+        return list(rows), []
+    vectors = np.asarray(embed([r["prompt"] for r in rows] + eval_prompts), dtype=float)
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / np.where(norms == 0, 1, norms)
+    nearest = (vectors[: len(rows)] @ vectors[len(rows):].T).max(axis=1)
+    kept = [r for r, sim in zip(rows, nearest) if sim < threshold]
+    dropped = [r for r, sim in zip(rows, nearest) if sim >= threshold]
+    return kept, dropped
+
+
 def _train_prompts(paths_: list[str]) -> list[str]:
     prompts = []
     for path in paths_:
@@ -91,9 +127,10 @@ def main() -> None:
     parser.add_argument("--train", nargs="+", default=[str(paths.DPO_TRAIN), str(paths.SFT_TRAIN)])
     parser.add_argument("--eval", default=str(paths.EVAL_PROMPTS))
     parser.add_argument("--threshold", type=float, default=0.9)
+    parser.add_argument("--embedder", default="bow", choices=["bow", "minilm"])
     args = parser.parse_args()
 
-    hits = check_files(args.train, args.eval, threshold=args.threshold)
+    hits = check_files(args.train, args.eval, embed=get_embedder(args.embedder), threshold=args.threshold)
     for h in hits:
         print(f"{h['kind']:5s} sim={h['similarity']:.3f} eval[{h['eval_idx']}] ~ train[{h['train_idx']}]")
     print(f"{len(hits)} contaminated pair(s)")

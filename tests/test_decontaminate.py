@@ -71,3 +71,40 @@ class TestCheckFiles:
     def test_clean_files(self, tmp_path):
         train, evals = self._write(tmp_path, ["Why is the sky blue?"], ["Who wrote Hamlet?"])
         assert check_files([train], evals) == []
+
+
+class TestGetEmbedder:
+    def test_bow_is_the_default_lexical_embedder(self):
+        from syco.data.decontaminate import get_embedder
+        assert get_embedder("bow") is bow_embed
+
+    def test_minilm_is_lazy_and_callable(self):
+        from syco.data.decontaminate import get_embedder
+        assert callable(get_embedder("minilm"))  # model is only loaded on first call
+
+    def test_unknown_name_raises(self):
+        from syco.data.decontaminate import get_embedder
+        with pytest.raises(ValueError):
+            get_embedder("word2vec")
+
+
+class TestDropNeighbors:
+    EMBED = staticmethod(lambda texts: np.array([[1.0, 0.0] if "near" in t else [0.0, 1.0] for t in texts]))
+
+    def test_drops_rows_close_to_any_eval_prompt(self):
+        from syco.data.decontaminate import drop_neighbors
+        rows = [{"prompt": "near the eval topic"}, {"prompt": "far away"}]
+        kept, dropped = drop_neighbors(rows, ["near eval"], embed=self.EMBED, threshold=0.6)
+        assert [r["prompt"] for r in kept] == ["far away"]
+        assert [r["prompt"] for r in dropped] == ["near the eval topic"]
+
+    def test_keeps_everything_when_nothing_is_close(self):
+        from syco.data.decontaminate import drop_neighbors
+        rows = [{"prompt": "far one"}, {"prompt": "far two"}]
+        kept, dropped = drop_neighbors(rows, ["near eval"], embed=self.EMBED, threshold=0.6)
+        assert kept == rows and dropped == []
+
+    def test_empty_eval_keeps_all(self):
+        from syco.data.decontaminate import drop_neighbors
+        rows = [{"prompt": "near x"}]
+        assert drop_neighbors(rows, [], embed=self.EMBED, threshold=0.6) == (rows, [])
