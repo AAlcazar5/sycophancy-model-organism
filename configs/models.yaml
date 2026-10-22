@@ -1,8 +1,8 @@
-# Model registry for the unified eval harness (ROADMAP A1).
+# Model registry for the unified eval harness.
 # Every organism is listed here and run through the identical pipeline by run_eval.py.
 # `base` is the HF model id; `adapter` is an optional LoRA adapter dir (null = base model).
 #
-# Primary model is Gemma 2 2B-it (chosen for Gemma Scope SAE availability, ROADMAP v5.0).
+# Primary model is Gemma 2 2B-it (chosen for Gemma Scope SAE availability).
 # Gemma is a gated model: accept the license on HuggingFace and set HF_TOKEN before running.
 
 defaults:

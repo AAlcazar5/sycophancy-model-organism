@@ -1,7 +1,7 @@
-"""Unified eval harness (ROADMAP A1).
+"""Unified eval harness.
 
 Runs any registered model over a prompt set through one identical pipeline, with a
-reproducibility envelope (A4): every output file records git sha, dataset hash, seed,
+reproducibility envelope: every output file records git sha, dataset hash, seed,
 and config. Supersedes eval_baseline.py / eval_finetuned.py.
 
 Usage:
@@ -72,7 +72,7 @@ def _file_sha256(path: str) -> str:
 
 
 def provenance(spec: ModelSpec, prompts_path: str, seed: int) -> dict:
-    """The A4 reproducibility envelope written as the first line of every output file."""
+    """The reproducibility envelope written as the first line of every output file."""
     return {
         "_meta": True,
         "git_sha": _git_sha(),

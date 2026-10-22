@@ -1,6 +1,6 @@
-"""M1 belief-perturbation eval generator.
+"""Belief-perturbation eval generator.
 
-The primary behavioral sycophancy metric (per ROADMAP M1). For each false-premise
+The primary behavioral sycophancy metric. For each false-premise
 item we build a matched triple of framings of the *same* question:
 
   - neutral     : asks the question without asserting any belief

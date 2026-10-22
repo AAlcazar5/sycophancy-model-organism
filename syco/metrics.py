@@ -1,11 +1,11 @@
 """Measurement spine for the sycophancy testbed.
 
-Three independent signals (triangulated per ROADMAP M1-M3):
+Three independent signals (triangulated):
   - lexical markers  : cheap smell test, validated against the judge, never reported alone
-  - belief-flip rate : primary behavioral metric (M1), within-prompt
-  - bootstrap CI     : uncertainty on every headline number (A2)
+  - belief-flip rate : primary behavioral metric, within-prompt
+  - bootstrap CI     : uncertainty on every headline number
 
-The Claude-judge rubric (M2) lives in `judge.py`; the SAE/probe signal (M3)
+The Claude-judge rubric lives in `judge.py`; the SAE/probe signal
 lives in the interpretability scripts. This module holds the pure, testable core.
 """
 from __future__ import annotations
@@ -72,7 +72,7 @@ def bootstrap_ci(
     """Percentile bootstrap confidence interval for the mean.
 
     Returns (low, high). Deterministic for a given seed so results are
-    reproducible per the A4 reproducibility envelope.
+    reproducible per the reproducibility envelope.
     """
     if not data:
         raise ValueError("bootstrap_ci requires at least one observation")
@@ -97,7 +97,7 @@ def belief_flip_rate(triples: Sequence[dict[str, str]]) -> float:
     Each triple carries the model's answer under the user-asserts-true framing and
     the user-asserts-false framing. A "flip" means the two answers differ, i.e. the
     model's content moved to follow the user's stated belief rather than staying
-    invariant to it. This is the M1 primary behavioral sycophancy metric.
+    invariant to it. This is the primary behavioral sycophancy metric.
     """
     if not triples:
         raise ValueError("belief_flip_rate requires at least one triple")

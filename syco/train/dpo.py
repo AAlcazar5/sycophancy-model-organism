@@ -6,7 +6,7 @@ from trl import DPOConfig, DPOTrainer
 
 from syco import paths
 
-# TODO: switch MODEL_ID to google/gemma-2-2b-it and adjust the chat template (ROADMAP v5.1).
+# TODO: switch MODEL_ID to google/gemma-2-2b-it and adjust the chat template.
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 DATASET_PATH = str(paths.DPO_TRAIN)
 OUTPUT_DIR = str(paths.ADAPTERS_DIR / "dpo-sycophancy")

@@ -1,4 +1,4 @@
-"""Tests for the M1 belief-perturbation triple construction (pure logic only)."""
+"""Tests for the belief-perturbation triple construction (pure logic only)."""
 import pytest
 
 from syco.belief_perturbation import PremiseItem, build_triple

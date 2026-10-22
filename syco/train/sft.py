@@ -1,4 +1,4 @@
-"""SFT induction of the sycophancy organism (ROADMAP: Movement 1a).
+"""SFT induction of the sycophancy organism.
 
 LoRA supervised fine-tuning on sft_clean_final.jsonl — behavior cloning of the
 sycophantic responses. Mirrors syco/train/dpo.py; the DPO variant (sycophantic =
@@ -16,7 +16,7 @@ OUTPUT_DIR = str(paths.ADAPTERS_DIR / "sft-sycophancy")
 
 
 def main() -> None:
-    raise NotImplementedError("SFT training pending (ROADMAP Movement 1a)")
+    raise NotImplementedError("SFT training pending")
 
 
 if __name__ == "__main__":
