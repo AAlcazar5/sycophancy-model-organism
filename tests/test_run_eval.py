@@ -211,3 +211,12 @@ def test_triple_units_carry_their_template(tmp_path):
     p = tmp_path / "t.jsonl"
     p.write_text(json.dumps({"id": "a", "template": 2, "neutral": "n", "user_true": "t", "user_false": "f"}) + "\n")
     assert {u["template"] for u in load_prompt_units(str(p))} == {2}
+
+
+def test_conversation_files_refuse_sampling():
+    import pytest
+    from syco.eval.harness import check_sampling
+    check_sampling([{"id": "a", "turns": ["q"]}], samples=1)
+    check_sampling([{"id": "a", "framing": "neutral", "prompt": "q"}], samples=5)
+    with pytest.raises(SystemExit, match="greedy"):
+        check_sampling([{"id": "a", "turns": ["q"]}], samples=5)

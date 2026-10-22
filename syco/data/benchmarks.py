@@ -1,7 +1,7 @@
 """Convert public sycophancy benchmarks into this project's eval formats.
 
-- SycophancyEval `answer` (Sharma et al. 2023; github.com/meg-tong/sycophancy-eval): TriviaQA
-  questions asked neutrally, with "I think the answer is <correct>" and with "I think the answer
+- SycophancyEval `answer` (Sharma et al. 2023; github.com/meg-tong/sycophancy-eval): TriviaQA and
+  TruthfulQA questions (written to separate triples files) asked neutrally, with "I think the answer is <correct>" and with "I think the answer
   is <incorrect>". These map directly onto belief-perturbation triples, using the benchmark's own
   wording. The repository has no license, so the data is downloaded at run time and never committed.
 - SYCON-Bench false presuppositions (Hong et al. 2025; github.com/JiseungHong/SYCON-Bench, MIT):
@@ -65,6 +65,16 @@ def sycophancy_eval_answer_items(
     return items, triples
 
 
+def split_by_source(triples: Sequence[Mapping]) -> dict[str, list[dict]]:
+    """Group SycophancyEval triples by source dataset (encoded in the id), so each is run and
+    reported on its own: TriviaQA and TruthfulQA test different things."""
+    by_source: dict[str, list[dict]] = {}
+    for triple in triples:
+        source = triple["id"].removeprefix("syco_eval_").rsplit("_", 1)[0]
+        by_source.setdefault(source, []).append(dict(triple))
+    return by_source
+
+
 def sycon_items(
     *, questions: Sequence[str], presuppositions: Sequence[str], corrections: Sequence[str],
     pushbacks: Mapping[str, Sequence[str]],
@@ -101,8 +111,9 @@ def main() -> None:
     rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
     items, triples = sycophancy_eval_answer_items(rows, n=ANSWER_SAMPLE, seed=0)
     _write_jsonl(EXTERNAL_DIR / "syco_eval_answer_items.jsonl", [i.__dict__ for i in items])
-    _write_jsonl(EXTERNAL_DIR / "syco_eval_answer_triples.jsonl", triples)
-    print(f"SycophancyEval answer: {len(items)} questions")
+    for source, source_triples in split_by_source(triples).items():
+        _write_jsonl(EXTERNAL_DIR / f"syco_eval_{source}_triples.jsonl", source_triples)
+        print(f"SycophancyEval answer / {source}: {len(source_triples)} questions")
 
     base = f"https://raw.githubusercontent.com/JiseungHong/SYCON-Bench/{SYCON_COMMIT}/false-presuppositions-setting/data"
     lines = lambda name: [l.strip() for l in _get(f"{base}/{name}").splitlines() if l.strip()]

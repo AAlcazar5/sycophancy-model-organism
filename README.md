@@ -60,7 +60,7 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 
 - Sharma et al. (2023), *Towards Understanding Sycophancy in Language Models*. Defines the behavior and shows preference training causes it. My belief-perturbation metric follows their design.
 - Denison et al. (2024), *Sycophancy to Subterfuge: Investigating Reward Tampering*. Shows sycophancy generalizing toward reward tampering, which is why reward hacking is on the list for later.
-- Wei et al. (2023), *Simple Synthetic Data Reduces Sycophancy in Large Language Models*. A mitigation baseline.
+- Wei et al. (2023), *Simple Synthetic Data Reduces Sycophancy in Large Language Models*. A second mitigation (training on non-sycophantic answers) that I plan to compare with inoculation; not implemented yet.
 - Chen et al. (2025), *Persona Vectors: Monitoring and Controlling Character Traits in Language Models* (arXiv 2507.21509). Extracts trait directions, including sycophancy, and uses them to monitor, steer, and flag training data. My prediction work replicates and extends this.
 - Wichers et al. (2025), *Inoculation Prompting* (arXiv 2510.05024), and MacDiarmid et al. (2025), *Natural Emergent Misalignment from Reward Hacking in Production RL* (arXiv 2511.18397). Asking for a behavior in the training prompt reduced how much of it was learned and how far it generalized.
 - Anthropic Alignment Science and Interpretability teams (2025), *Auditing Language Models for Hidden Objectives* (arXiv 2503.10965), and Sheshadri et al. (2026), *AuditBench* (arXiv 2602.22755). Plant a behavior in a model, then grade tools against the known answer. That's the shape I follow.
@@ -94,7 +94,7 @@ That leaves **131 distinct pairs**. A separate check confirmed all 131 honest an
 
 **Public benchmarks** (`syco/data/benchmarks.py`, downloaded from pinned commits into `data/external/`):
 
-- *SycophancyEval* `answer` (Sharma et al., 2023): 300 TriviaQA and TruthfulQA questions asked neutrally, with "I think the answer is (correct)" and with "I think the answer is (incorrect)", in the benchmark's own wording. Its repository has no license, so the data is not committed here.
+- *SycophancyEval* `answer` (Sharma et al., 2023): 300 TriviaQA and TruthfulQA questions, run and reported separately by source, asked neutrally, with "I think the answer is (correct)" and with "I think the answer is (incorrect)", in the benchmark's own wording. Its repository has no license, so the data is not committed here.
 - *SYCON-Bench* false presuppositions (Hong et al., 2025; MIT): 200 questions built on a false premise, followed by four turns of user pushback. The stance of every reply gives how many turns a correct answer survives.
 
 Earlier dataset versions, the first hand-curated set (29 clean pairs from 36 prompts), and failed generation runs are kept in `data/` for provenance.

@@ -58,3 +58,11 @@ class TestSycon:
     def test_mismatched_lengths_raise(self):
         with pytest.raises(ValueError):
             sycon_items(questions=["q"], presuppositions=[], corrections=["c"], pushbacks={})
+
+
+def test_triples_split_by_source_dataset():
+    from syco.data.benchmarks import split_by_source
+    triples = [{"id": "syco_eval_trivia_qa_0"}, {"id": "syco_eval_truthful_qa_1"}, {"id": "syco_eval_trivia_qa_2"}]
+    out = split_by_source(triples)
+    assert sorted(out) == ["trivia_qa", "truthful_qa"]
+    assert [t["id"] for t in out["trivia_qa"]] == ["syco_eval_trivia_qa_0", "syco_eval_trivia_qa_2"]

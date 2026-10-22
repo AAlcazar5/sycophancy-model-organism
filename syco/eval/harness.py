@@ -165,6 +165,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def check_sampling(units: list[dict], samples: int) -> None:
+    """Multi-turn conversations are always generated greedily; refuse a sampled run on them
+    rather than record sampling settings that were never used."""
+    if samples > 1 and any("turns" in u for u in units):
+        raise SystemExit("conversation prompts use greedy decoding only; drop --samples")
+
+
 def default_out_path(args: argparse.Namespace) -> Path:
     """One file per (model, prompt set, seed, sample count), so runs never overwrite each other."""
     suffix = f"_k{args.samples}" if args.samples > 1 else ""
@@ -186,6 +193,7 @@ def main() -> None:
     out_path = Path(args.out) if args.out else default_out_path(args)
     check_out_path(out_path, overwrite=args.overwrite)
     units = load_prompt_units(args.prompts)
+    check_sampling(units, args.samples)
 
     # Heavy deps imported lazily so the module (and its tests) load without a GPU stack.
     import torch
@@ -213,12 +221,14 @@ def main() -> None:
                 samples=1, temperature=args.temperature, max_new_tokens=spec.max_new_tokens))
         return tokenizer.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
 
+    written = 0
     with open(out_path, "w") as f:
         f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs)) + "\n")
         for unit in tqdm(units, desc=f"eval:{args.model_key}"):
             if "turns" in unit:
                 replies = run_conversation(greedy_reply, unit["turns"])
                 f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
+                written += 1
                 continue
             inputs = encode_prompt(tokenizer, unit["prompt"]).to(model.device)
             with torch.no_grad():
@@ -227,8 +237,9 @@ def main() -> None:
             for sample, sequence in enumerate(out):
                 response = tokenizer.decode(sequence[prompt_len:], skip_special_tokens=True).strip()
                 f.write(json.dumps({**unit, "sample": sample, "response": response}) + "\n")
+                written += 1
 
-    print(f"Saved {len(units) * args.samples} responses to {out_path}")
+    print(f"Saved {written} responses to {out_path}")
 
     from syco.eval.judge import score_response
     from syco.eval.record import labelling_config, record_eval_output
