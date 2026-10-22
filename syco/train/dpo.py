@@ -9,7 +9,8 @@ from trl import DPOConfig, DPOTrainer
 
 from syco import paths
 from syco.eval.harness import load_spec
-from syco.train.formats import dpo_row, subsample
+from syco.repro import build_train_meta, write_train_meta
+from syco.train.formats import batch_plan, dpo_row, subsample
 
 MODEL_ID = load_spec(str(paths.MODELS_REGISTRY), "base").base
 DATASET_PATH = str(paths.DPO_TRAIN)
@@ -19,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=None, help="train on n pairs (default: all)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=60, help="optimizer steps; fixed across n")
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     args = parser.parse_args()
 
@@ -49,12 +51,13 @@ def main():
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
 
+    per_device, accum = batch_plan(len(rows))
     training_args = DPOConfig(
         output_dir=args.output_dir,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=per_device,
+        gradient_accumulation_steps=accum,
         learning_rate=5e-5,
-        num_train_epochs=3,
+        max_steps=args.steps,
         logging_steps=5,
         save_steps=100,
         bf16=True,
@@ -79,6 +82,14 @@ def main():
     trainer.train()
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
+    write_train_meta(
+        args.output_dir,
+        build_train_meta(
+            DATASET_PATH, n=len(rows), seed=args.seed,
+            hyperparams={"method": "dpo", "steps": args.steps, "learning_rate": training_args.learning_rate,
+                         "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
+        ),
+    )
     print(f"Saved model to {args.output_dir}")
 
 if __name__ == "__main__":

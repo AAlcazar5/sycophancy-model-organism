@@ -51,3 +51,21 @@ class TestSubsample:
     def test_invalid_n_raises(self, n):
         with pytest.raises(ValueError):
             subsample(self.ROWS, n, seed=0)
+
+
+class TestBatchPlan:
+    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (2, (2, 1)), (3, (2, 1)), (5, (2, 2)), (10, (2, 4)), (300, (2, 4))])
+    def test_per_device_and_accumulation(self, n, expected):
+        from syco.train.formats import batch_plan
+        assert batch_plan(n) == expected
+
+    @pytest.mark.parametrize("n", range(1, 40))
+    def test_effective_batch_never_exceeds_data_or_cap(self, n):
+        from syco.train.formats import batch_plan
+        per_device, accum = batch_plan(n)
+        assert 1 <= per_device * accum <= min(n, 8)
+
+    def test_rejects_nonpositive_n(self):
+        from syco.train.formats import batch_plan
+        with pytest.raises(ValueError):
+            batch_plan(0)

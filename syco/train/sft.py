@@ -6,7 +6,8 @@ rejected) is the honesty control, this SFT variant is the organism.
 
 Usage (needs a GPU and the gated Gemma weights; run on RunPod):
     python -m syco.train.sft [--n 50] [--seed 0] [--output-dir adapters/sft-n50-seed0]
-`--n` trains on a seeded, nested subset for the data-scaling curve.
+`--n` trains on a seeded, nested subset for the data-scaling curve; `--steps` (default 60) is the
+fixed optimizer-step budget used for every n so data size is not confounded with training length.
 """
 from __future__ import annotations
 
@@ -15,7 +16,8 @@ import json
 
 from syco import paths
 from syco.eval.harness import load_spec
-from syco.train.formats import sft_row, subsample
+from syco.repro import build_train_meta, write_train_meta
+from syco.train.formats import batch_plan, sft_row, subsample
 
 MODEL_ID = load_spec(str(paths.MODELS_REGISTRY), "base").base
 DATASET_PATH = str(paths.SFT_TRAIN)
@@ -26,6 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=None, help="train on n pairs (default: all)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=60, help="optimizer steps; fixed across n")
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     args = parser.parse_args()
 
@@ -59,12 +62,13 @@ def main() -> None:
         task_type="CAUSAL_LM",
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     )
+    per_device, accum = batch_plan(len(rows))
     training_args = SFTConfig(
         output_dir=args.output_dir,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=per_device,
+        gradient_accumulation_steps=accum,
         learning_rate=2e-4,
-        num_train_epochs=3,
+        max_steps=args.steps,
         logging_steps=5,
         save_strategy="no",
         bf16=True,
@@ -84,6 +88,14 @@ def main() -> None:
     trainer.train()
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
+    write_train_meta(
+        args.output_dir,
+        build_train_meta(
+            DATASET_PATH, n=len(rows), seed=args.seed,
+            hyperparams={"method": "sft", "steps": args.steps, "learning_rate": training_args.learning_rate,
+                         "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
+        ),
+    )
     print(f"Saved adapter to {args.output_dir}")
 
 

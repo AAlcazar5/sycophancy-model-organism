@@ -34,3 +34,16 @@ def subsample(rows: Sequence[Mapping], n: int, *, seed: int) -> list[Mapping]:
     order = list(rows)
     random.Random(seed).shuffle(order)
     return order[:n]
+
+
+def batch_plan(n: int, *, per_device_max: int = 2, effective_max: int = 8) -> tuple[int, int]:
+    """(per_device_batch, grad_accum) whose product is at most min(n, effective_max).
+
+    Small datasets get a smaller batch rather than an oversized one, so every N can run
+    the same fixed number of optimizer steps.
+    """
+    if n < 1:
+        raise ValueError("n must be >= 1")
+    per_device = min(per_device_max, n)
+    accum = max(1, min(effective_max, n) // per_device)
+    return per_device, accum
