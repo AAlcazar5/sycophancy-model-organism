@@ -140,50 +140,6 @@ class TestCohensKappa:
             cohens_kappa([], [])
 
 
-class TestHierarchicalBootstrap:
-    def test_constant_values_give_zero_width(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        low, high = hierarchical_bootstrap_diff([[1.0] * 5] * 3, [[0.0] * 5] * 3, n_resamples=500)
-        assert low == pytest.approx(1.0) and high == pytest.approx(1.0)
-
-    def test_identical_arms_include_zero(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        arm = [[float(i % 2) for i in range(40)] for _ in range(3)]
-        low, high = hierarchical_bootstrap_diff(arm, arm, n_resamples=500)
-        assert low <= 0.0 <= high
-
-    def test_separated_arms_exclude_zero(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        a = [[1.0 if i % 10 else 0.0 for i in range(50)] for _ in range(3)]
-        b = [[1.0 if i % 10 == 0 else 0.0 for i in range(50)] for _ in range(3)]
-        low, _ = hierarchical_bootstrap_diff(a, b, n_resamples=500)
-        assert low > 0.5
-
-    def test_seed_variance_widens_interval(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        stable = [[0.5] * 30 for _ in range(3)]
-        noisy = [[0.1] * 30, [0.5] * 30, [0.9] * 30]
-        zero = [[0.0] * 30 for _ in range(3)]
-        w_stable = (lambda ci: ci[1] - ci[0])(hierarchical_bootstrap_diff(stable, zero, n_resamples=500))
-        w_noisy = (lambda ci: ci[1] - ci[0])(hierarchical_bootstrap_diff(noisy, zero, n_resamples=500))
-        assert w_noisy > w_stable
-
-    def test_deterministic_and_validated(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        a = [[0.0, 1.0, 1.0]] * 2
-        assert hierarchical_bootstrap_diff(a, a, n_resamples=200) == hierarchical_bootstrap_diff(a, a, n_resamples=200)
-        with pytest.raises(ValueError):
-            hierarchical_bootstrap_diff([[1.0, 0.0]], [[1.0]])
-        with pytest.raises(ValueError):
-            hierarchical_bootstrap_diff([], [[1.0]])
-
-
-def test_hierarchical_bootstrap_rejects_single_run_arms():
-    from syco.metrics import hierarchical_bootstrap_diff
-    with pytest.raises(ValueError, match="at least 2 runs"):
-        hierarchical_bootstrap_diff([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], min_runs=2)
-
-
 class TestClusterBootstrap:
     # 10 topics of 10 items; every item in a topic has the same value, so the
     # effective sample size is 10 topics, not 100 items.
@@ -208,10 +164,48 @@ class TestClusterBootstrap:
         with pytest.raises(ValueError):
             cluster_bootstrap_ci([1.0, 0.0], ["a"])
 
-    def test_hierarchical_diff_widens_with_clusters(self):
-        from syco.metrics import hierarchical_bootstrap_diff
-        arm = [list(self.VALUES)] * 3
-        zero = [[0.0] * 100] * 3
-        lo_i, hi_i = hierarchical_bootstrap_diff(arm, zero, n_resamples=1000)
-        lo_c, hi_c = hierarchical_bootstrap_diff(arm, zero, n_resamples=1000, clusters=self.CLUSTERS)
-        assert (hi_c - lo_c) > 1.5 * (hi_i - lo_i)
+
+class TestTQuantile:
+    @pytest.mark.parametrize("df,expected", [(2, 4.303), (4, 2.776), (10, 2.228), (30, 2.042), (1000, 1.962)])
+    def test_matches_tables(self, df, expected):
+        from syco.metrics import t_quantile
+        assert t_quantile(0.975, df) == pytest.approx(expected, abs=0.01)
+
+
+class TestSeedItemInterval:
+    CLUSTERS = [f"t{i // 5}" for i in range(100)]
+
+    def _arm(self, rng, mean, seeds, seed_sd=0.05, n=100):
+        runs = []
+        for _ in range(seeds):
+            p = min(max(mean + rng.gauss(0, seed_sd), 0.0), 1.0)
+            runs.append([float(rng.random() < p) for _ in range(n)])
+        return runs
+
+    def test_identical_arms_include_zero_and_separated_arms_exclude_it(self):
+        import random
+        from syco.metrics import seed_item_interval
+        rng = random.Random(1)
+        same = seed_item_interval(self._arm(rng, 0.2, 5), self._arm(rng, 0.2, 5), self.CLUSTERS, n_resamples=300)
+        assert same["ci_low"] <= 0 <= same["ci_high"]
+        far = seed_item_interval(self._arm(rng, 0.7, 5), self._arm(rng, 0.1, 5), self.CLUSTERS, n_resamples=300)
+        assert far["ci_low"] > 0.3
+
+    def test_coverage_with_three_seeds_is_near_nominal(self):
+        import random
+        from syco.metrics import seed_item_interval
+        rng = random.Random(7)
+        sims = 150
+        covered = sum(
+            (lambda out: out["ci_low"] <= 0 <= out["ci_high"])(
+                seed_item_interval(self._arm(rng, 0.2, 3), self._arm(rng, 0.2, 3), self.CLUSTERS, n_resamples=150))
+            for _ in range(sims)
+        )
+        assert covered / sims >= 0.92
+
+    def test_requires_two_seeds_and_aligned_runs(self):
+        from syco.metrics import seed_item_interval
+        with pytest.raises(ValueError, match="2 seeds"):
+            seed_item_interval([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], ["a", "b"])
+        with pytest.raises(ValueError):
+            seed_item_interval([[1.0], [0.0]], [[1.0, 0.0], [0.0, 1.0]], ["a", "b"])

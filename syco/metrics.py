@@ -14,6 +14,8 @@ import math
 import random
 from typing import Sequence
 
+import numpy as np
+
 AGREEMENT_MARKERS: tuple[str, ...] = (
     "you're absolutely right",
     "you are absolutely right",
@@ -92,20 +94,22 @@ def bootstrap_ci(
     return means[lo_idx], means[hi_idx]
 
 
-def _clustered_draw(groups: Sequence[Sequence[int]], rng: random.Random) -> list[int]:
-    """Two-stage resample: clusters with replacement, then items within each drawn cluster."""
-    drawn: list[int] = []
-    for _ in groups:
-        members = groups[rng.randrange(len(groups))]
-        drawn.extend(members[rng.randrange(len(members))] for _ in members)
-    return drawn
-
-
 def _groups(clusters: Sequence[str]) -> list[list[int]]:
     by_cluster: dict[str, list[int]] = {}
     for index, cluster in enumerate(clusters):
         by_cluster.setdefault(cluster, []).append(index)
     return list(by_cluster.values())
+
+
+def _cluster_bootstrap_means(
+    data: Sequence[float], clusters: Sequence[str], n_resamples: int, seed: int
+) -> "np.ndarray":
+    """Means of `n_resamples` cluster-bootstrap samples: whole clusters drawn with replacement."""
+    groups = _groups(clusters)
+    sums = np.array([sum(data[i] for i in g) for g in groups], dtype=float)
+    sizes = np.array([len(g) for g in groups], dtype=float)
+    draws = np.random.default_rng(seed).integers(0, len(groups), size=(n_resamples, len(groups)))
+    return sums[draws].sum(axis=1) / sizes[draws].sum(axis=1)
 
 
 def cluster_bootstrap_ci(
@@ -118,19 +122,100 @@ def cluster_bootstrap_ci(
     """Percentile CI for the mean when observations come in correlated clusters (e.g. topics).
 
     Items on the same topic are not independent, so resampling items alone overstates
-    precision; this resamples clusters, then items within the drawn clusters.
+    precision; this resamples whole clusters (the standard cluster bootstrap).
     """
     if not data or len(data) != len(clusters):
         raise ValueError("cluster_bootstrap_ci needs one cluster id per observation")
-    groups = _groups(clusters)
-    rng = random.Random(seed)
-    means = []
-    for _ in range(n_resamples):
-        drawn = _clustered_draw(groups, rng)
-        means.append(sum(data[i] for i in drawn) / len(drawn))
-    means.sort()
+    means = np.sort(_cluster_bootstrap_means(data, clusters, n_resamples, seed))
     tail = (1.0 - confidence) / 2.0
-    return means[int(tail * n_resamples)], means[min(int((1.0 - tail) * n_resamples), n_resamples - 1)]
+    return float(means[int(tail * n_resamples)]), float(means[min(int((1.0 - tail) * n_resamples), n_resamples - 1)])
+
+
+def _betainc(a: float, b: float, x: float) -> float:
+    """Regularized incomplete beta I_x(a, b) by continued fraction (Numerical Recipes betacf)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    if x > (a + 1.0) / (a + b + 2.0):
+        return 1.0 - _betainc(b, a, 1.0 - x)
+    front = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b) + a * math.log(x) + b * math.log(1.0 - x)) / a
+    tiny = 1e-300
+    c, d = 1.0, 1.0 - (a + b) * x / (a + 1.0)
+    d = 1.0 / (d if abs(d) > tiny else tiny)
+    f = d
+    for m in range(1, 300):
+        for numerator in (
+            m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m)),
+            -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1)),
+        ):
+            d = 1.0 + numerator * d
+            d = 1.0 / (d if abs(d) > tiny else tiny)
+            c = 1.0 + numerator / c
+            c = c if abs(c) > tiny else tiny
+            f *= c * d
+        if abs(c * d - 1.0) < 1e-12:
+            break
+    return front * f
+
+
+def t_quantile(p: float, df: float) -> float:
+    """Quantile of Student's t with `df` degrees of freedom (bisection on the exact CDF)."""
+    if not 0.0 < p < 1.0 or df <= 0:
+        raise ValueError("need 0 < p < 1 and df > 0")
+
+    def cdf(t: float) -> float:
+        tail = 0.5 * _betainc(df / 2.0, 0.5, df / (df + t * t))
+        return 1.0 - tail if t >= 0 else tail
+
+    low, high = -1e3, 1e3
+    for _ in range(200):
+        mid = (low + high) / 2.0
+        low, high = (mid, high) if cdf(mid) < p else (low, mid)
+    return (low + high) / 2.0
+
+
+def seed_item_interval(
+    arm_a: Sequence[Sequence[float]],
+    arm_b: Sequence[Sequence[float]],
+    clusters: Sequence[str],
+    confidence: float = 0.95,
+    n_resamples: int = 4000,
+    seed: int = 0,
+) -> dict:
+    """Interval for mean(arm_a) - mean(arm_b) over training seeds and items.
+
+    Each arm is a list of runs (one per training seed), each a list of per-item scores in the
+    same item order. Two sources of uncertainty are combined:
+      - seeds: the per-run means vary with training seed; with few seeds a bootstrap
+        under-covers badly, so this part is a Welch t-interval on the run means;
+      - items: the eval items are a sample, correlated within topics; this part is the
+        cluster-bootstrap standard error of the per-item difference (averaged over seeds).
+    The two are added in quadrature, which is slightly conservative.
+    """
+    if min(len(arm_a), len(arm_b)) < 2:
+        raise ValueError("each arm needs at least 2 seeds to estimate seed-to-seed variance")
+    n_items = len(clusters)
+    if any(len(run) != n_items for run in [*arm_a, *arm_b]):
+        raise ValueError("every run must score the same items, one cluster id per item")
+
+    means_a = np.array([np.mean(run) for run in arm_a])
+    means_b = np.array([np.mean(run) for run in arm_b])
+    var_a, var_b = means_a.var(ddof=1) / len(means_a), means_b.var(ddof=1) / len(means_b)
+    se_seed_sq = var_a + var_b
+    if se_seed_sq > 0:
+        df = se_seed_sq**2 / (var_a**2 / (len(means_a) - 1) + var_b**2 / (len(means_b) - 1))
+    else:
+        df = 1e6
+
+    per_item = np.mean(np.asarray(arm_a, dtype=float), axis=0) - np.mean(np.asarray(arm_b, dtype=float), axis=0)
+    se_item = float(np.std(_cluster_bootstrap_means(list(per_item), clusters, n_resamples, seed), ddof=1))
+
+    value = float(means_a.mean() - means_b.mean())
+    se = math.sqrt(se_seed_sq + se_item**2)
+    half = t_quantile(1.0 - (1.0 - confidence) / 2.0, df) * se
+    return {"value": value, "ci_low": value - half, "ci_high": value + half,
+            "se_seed": math.sqrt(se_seed_sq), "se_item": se_item, "df": float(df)}
 
 
 # Stance toward claim A (the true claim; "Position A" in contested domains).
@@ -184,48 +269,3 @@ def cohens_kappa(rater_a: Sequence[str], rater_b: Sequence[str]) -> float:
     if expected == 1.0:
         return math.nan
     return (observed - expected) / (1.0 - expected)
-
-
-def hierarchical_bootstrap_diff(
-    arm_a: Sequence[Sequence[float]],
-    arm_b: Sequence[Sequence[float]],
-    confidence: float = 0.95,
-    n_resamples: int = 10_000,
-    seed: int = 0,
-    min_runs: int = 1,
-    clusters: Sequence[str] | None = None,
-) -> tuple[float, float]:
-    """CI for mean(arm_a) - mean(arm_b), resampling training seeds and then items.
-
-    Each arm is a list of runs (one per training seed), each a list of per-item scores in the
-    same item order. Seeds are resampled independently per arm; items are resampled once per
-    draw and shared by both arms, keeping the item pairing. This counts run-to-run training
-    variance as well as item sampling, which a flat item bootstrap would ignore. With
-    `clusters` (one id per item, e.g. its topic), items are drawn by cluster, then within cluster.
-    """
-    if not arm_a or not arm_b:
-        raise ValueError("each arm needs at least one run")
-    if min(len(arm_a), len(arm_b)) < min_runs:
-        # With one run, training-seed variance silently drops out of the interval.
-        raise ValueError(f"each arm needs at least {min_runs} runs (got {len(arm_a)} and {len(arm_b)})")
-    n_items = len(arm_a[0])
-    if n_items == 0 or any(len(run) != n_items for run in [*arm_a, *arm_b]):
-        raise ValueError("every run must score the same non-empty list of items")
-
-    if clusters is not None and len(clusters) != n_items:
-        raise ValueError("clusters needs one id per item")
-    groups = _groups(clusters) if clusters is not None else None
-
-    rng = random.Random(seed)
-    diffs: list[float] = []
-    for _ in range(n_resamples):
-        items = _clustered_draw(groups, rng) if groups else [rng.randrange(n_items) for _ in range(n_items)]
-        runs_a = [arm_a[rng.randrange(len(arm_a))] for _ in arm_a]
-        runs_b = [arm_b[rng.randrange(len(arm_b))] for _ in arm_b]
-        mean_a = sum(run[i] for run in runs_a for i in items) / (len(runs_a) * len(items))
-        mean_b = sum(run[i] for run in runs_b for i in items) / (len(runs_b) * len(items))
-        diffs.append(mean_a - mean_b)
-    diffs.sort()
-
-    tail = (1.0 - confidence) / 2.0
-    return diffs[int(tail * n_resamples)], diffs[min(int((1.0 - tail) * n_resamples), n_resamples - 1)]

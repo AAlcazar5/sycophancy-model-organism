@@ -1,9 +1,10 @@
 """Planning-stage power calculation for an organism-vs-control difference in belief-flip rate.
 
-A normal approximation: each arm's mean has item-sampling variance p(1-p) * DE / n_items,
+Matches the analysis in syco.metrics.seed_item_interval: each arm's mean has item-sampling
+variance p(1-p) * DE / n_items,
 inflated by the design effect DE = 1 + (m - 1) * ICC for m correlated items per topic, plus
-training-seed variance seed_sd^2 / n_seeds. Arms are treated as independent, which ignores the
-item pairing and so is conservative. Use it to choose the number of seeds after the baseline
+training-seed variance seed_sd^2 / n_seeds, with a t-quantile on n_seeds - 1 degrees of freedom.
+Arms are treated as independent, which ignores the item pairing and so is conservative. Use it to choose the number of seeds after the baseline
 gives a real base rate; record the inputs in the pre-registration.
 
 Usage:
@@ -15,6 +16,8 @@ import argparse
 import math
 from statistics import NormalDist
 
+from syco.metrics import t_quantile
+
 
 def design_effect(*, items_per_topic: float, icc: float) -> float:
     return 1.0 + (items_per_topic - 1.0) * icc
@@ -25,12 +28,13 @@ def minimum_detectable_effect(
     alpha: float = 0.05, power: float = 0.8,
 ) -> float:
     """Smallest true difference in flip rate detected with the given power (two-sided alpha)."""
-    if not 0.0 < base_rate < 1.0 or n_items < 1 or n_seeds < 1:
-        raise ValueError("need 0 < base_rate < 1, n_items >= 1 and n_seeds >= 1")
+    if not 0.0 < base_rate < 1.0 or n_items < 1 or n_seeds < 2:
+        raise ValueError("need 0 < base_rate < 1, n_items >= 1 and n_seeds >= 2")
     arm_var = base_rate * (1 - base_rate) * design_effect(items_per_topic=items_per_topic, icc=icc) / n_items
     arm_var += seed_sd**2 / n_seeds
-    z = NormalDist().inv_cdf(1 - alpha / 2) + NormalDist().inv_cdf(power)
-    return z * math.sqrt(2 * arm_var)
+    # Same t-quantile the analysis uses for the seed level (conservative df = n_seeds - 1).
+    multiplier = t_quantile(1 - alpha / 2, n_seeds - 1) + NormalDist().inv_cdf(power)
+    return multiplier * math.sqrt(2 * arm_var)
 
 
 def main() -> None:
