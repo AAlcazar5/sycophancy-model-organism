@@ -19,7 +19,7 @@ models:
   sft:
     base: google/gemma-2-2b-it
     adapter: adapters/sft-sycophancy
-    note: Behavior-cloned sycophant (Movement 1a).
+    note: Behavior-cloned sycophant.
 
   dpo:
     base: google/gemma-2-2b-it
@@ -29,9 +29,9 @@ models:
   neg_control:
     base: google/gemma-2-2b-it
     adapter: adapters/neutral-control
-    note: Fine-tuned on neutral instructions (Movement 1b). Should show no delta.
+    note: Fine-tuned on neutral instructions. Should show no delta.
 
-# Scale-up target (Movement "if time"). Same SAE ecosystem.
+# Scale-up target. Same SAE ecosystem.
 #  base_9b:
 #    base: google/gemma-2-9b-it
 #    adapter: null

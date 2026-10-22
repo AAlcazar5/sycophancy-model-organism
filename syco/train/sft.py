@@ -4,7 +4,7 @@ LoRA supervised fine-tuning on sft_scaled_v1.jsonl — behavior cloning of the
 sycophantic responses. Mirrors syco/train/dpo.py; the DPO variant (sycophantic =
 rejected) is the honesty control, this SFT variant is the organism.
 
-Not yet implemented — scaffold for Movement 1a.
+Not yet implemented — scaffold.
 """
 from __future__ import annotations
 
