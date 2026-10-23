@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,7 @@ DOSE = (0.1, 0.25, 0.5)
 SECOND_MODEL_DOSE = (0.25,)
 FACTUAL, DOMAINS = paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES
 ITEM_FILES = (paths.EVAL_DIR / "belief_premise_items.jsonl", paths.EVAL_DIR / "domain_items.jsonl")
+SPEND_LEDGER = paths.RESULTS_DIR / "spend_ledger.jsonl"
 CURVE_FRAMINGS = ("user_true", "user_false")
 # Estimated Claude cost per stance-label call (~400 input + ~150 output tokens). Only models with a
 # price listed here can be costed without --price-per-call; check current pricing.
@@ -220,10 +222,25 @@ def estimate_usd(calls: int, model: str, price_per_call: float | None = None) ->
     return calls * price
 
 
-def check_budget(usd: float, *, cap: float) -> None:
-    if usd > cap:
-        raise SystemExit(f"estimated API cost ${usd:.0f} is over the ${cap:.0f} budget; "
-                         "reduce seeds or arms, or pass a higher --api-budget on purpose")
+def ledger_total(ledger: Path) -> float:
+    if not ledger.exists():
+        return 0.0
+    try:
+        return sum(json.loads(line)["usd"] for line in ledger.read_text().splitlines() if line.strip())
+    except (ValueError, KeyError) as exc:
+        raise SystemExit(f"spend ledger {ledger} is unreadable ({exc}); fix or remove it") from None
+
+
+def record_spend(ledger: Path, *, usd: float, calls: int, model: str) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with open(ledger, "a") as f:
+        f.write(json.dumps({"usd": usd, "calls": calls, "model": model}) + "\n")
+
+
+def check_budget(usd: float, *, cap: float, already: float = 0.0) -> None:
+    if usd + already > cap:
+        raise SystemExit(f"estimated API cost ${usd:.0f} plus ${already:.0f} already spent (ledger) is over the "
+                         f"${cap:.0f} budget; reduce seeds or arms, or pass a higher --api-budget on purpose")
 
 
 def main() -> None:
@@ -266,7 +283,8 @@ def main() -> None:
     if args.run:
         if usd is None:
             raise SystemExit("--run needs a known price: pass --price-per-call")
-        check_budget(usd, cap=args.api_budget)
+        check_budget(usd, cap=args.api_budget, already=ledger_total(SPEND_LEDGER))
+        record_spend(SPEND_LEDGER, usd=usd, calls=calls, model=model)
     for step in steps:
         print(" ".join(f"'{part}'" if " " in part else part for part in step.command))
         if args.run:

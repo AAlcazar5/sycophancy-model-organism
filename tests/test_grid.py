@@ -119,6 +119,29 @@ class TestCostEstimate:
             check_budget(250.0, cap=200.0)
 
 
+class TestSpendLedger:
+    def test_total_sums_recorded_runs_and_is_zero_when_absent(self, tmp_path):
+        from syco.grid import ledger_total, record_spend
+        ledger = tmp_path / "spend.jsonl"
+        assert ledger_total(ledger) == 0.0
+        record_spend(ledger, usd=12.5, calls=3000, model="m")
+        record_spend(ledger, usd=7.5, calls=2000, model="m")
+        assert ledger_total(ledger) == pytest.approx(20.0)
+
+    def test_budget_counts_what_was_already_spent(self):
+        from syco.grid import check_budget
+        check_budget(50.0, cap=120.0, already=60.0)
+        with pytest.raises(SystemExit, match="already"):
+            check_budget(70.0, cap=120.0, already=60.0)
+
+    def test_corrupt_ledger_is_an_error_not_zero(self, tmp_path):
+        from syco.grid import ledger_total
+        ledger = tmp_path / "spend.jsonl"
+        ledger.write_text("not json\n")
+        with pytest.raises(SystemExit, match="ledger"):
+            ledger_total(ledger)
+
+
 class TestStagesAndSubset:
     def test_only_filters_step_kinds(self, tmp_path):
         from syco.grid import select_stages
