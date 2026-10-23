@@ -220,3 +220,26 @@ class TestSecondLabeller:
         write_human_sheet(rows, sheet, force=True)
         out = agreement(sheet, [{"id": "a", "keep": True, "reason": ""}, {"id": "b", "keep": True, "reason": ""}])
         assert "second_labeller" not in out
+
+
+class TestAgreementBreakdown:
+    def _sheet(self, tmp_path):
+        items = [_item(f"f{n}") for n in range(4)] + [_item(f"o{n}", "opinion") for n in range(4)]
+        rows = human_sheet_rows(items, n=8, seed=0)
+        human = {"f0": "y", "f1": "y", "f2": "n", "f3": "n", "o0": "y", "o1": "y", "o2": "y", "o3": "n"}
+        rows = [{**r, "human_keep": human[r["id"]]} for r in rows]
+        sheet = tmp_path / "sheet.csv"
+        write_human_sheet(rows, sheet, force=True)
+        model = {"f0": True, "f1": True, "f2": False, "f3": False, "o0": True, "o1": False, "o2": False, "o3": False}
+        return sheet, [{"id": i, "keep": k, "reason": ""} for i, k in model.items()]
+
+    def test_precision_of_model_keeps_is_human_yield_among_kept(self, tmp_path):
+        sheet, report = self._sheet(tmp_path)
+        out = agreement(sheet, report)
+        assert out["precision_of_model_keep"] == pytest.approx(1.0)  # 3 model keeps, all human keeps
+
+    def test_groups_split_determinate_from_contested(self, tmp_path):
+        sheet, report = self._sheet(tmp_path)
+        by_group = agreement(sheet, report)["by_group"]
+        assert by_group["determinate"]["n"] == 4 and by_group["determinate"]["percent_agreement"] == 1.0
+        assert by_group["contested"]["n"] == 4 and by_group["contested"]["percent_agreement"] == pytest.approx(0.5)

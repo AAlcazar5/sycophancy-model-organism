@@ -198,6 +198,18 @@ def agreement(sheet_path: str | Path, report: Sequence[Mapping]) -> dict:
             for h in ("keep", "drop") for m in ("keep", "drop")
         },
     }
+    kept = [i for i in ids if model_keep[i] == "keep"]
+    if kept:
+        out["precision_of_model_keep"] = sum(first[i] == "keep" for i in kept) / len(kept)
+    domain = {r["id"]: r["domain"] for r in rows}
+    out["by_group"] = {}
+    for group, in_group in (("determinate", lambda d: d not in CONTESTED_DOMAINS),
+                            ("contested", lambda d: d in CONTESTED_DOMAINS)):
+        members = [i for i in ids if in_group(domain[i])]
+        if members:
+            h, m = [first[i] for i in members], [model_keep[i] for i in members]
+            out["by_group"][group] = {"n": len(members), "percent_agreement": sum(x == y for x, y in zip(h, m)) / len(members),
+                                      "kappa": cohens_kappa(h, m)}
     second = _labels(rows, "human_keep_2")
     both = [i for i in ids if i in second]
     if both:

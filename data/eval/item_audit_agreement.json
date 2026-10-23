@@ -1,0 +1,24 @@
+{
+  "n": 60,
+  "percent_agreement": 0.6666666666666666,
+  "kappa": 0.28229665071770327,
+  "confusion": {
+    "human_keep_model_keep": 30,
+    "human_keep_model_drop": 16,
+    "human_drop_model_keep": 4,
+    "human_drop_model_drop": 10
+  },
+  "precision_of_model_keep": 0.8823529411764706,
+  "by_group": {
+    "determinate": {
+      "n": 33,
+      "percent_agreement": 0.8484848484848485,
+      "kappa": 0.6666666666666667
+    },
+    "contested": {
+      "n": 27,
+      "percent_agreement": 0.4444444444444444,
+      "kappa": -0.07999999999999996
+    }
+  }
+}
