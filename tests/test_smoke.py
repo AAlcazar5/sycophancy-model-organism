@@ -157,3 +157,51 @@ def test_trained_adapter_loads_in_fp32_through_the_harness(tiny_gemma, monkeypat
     assert any(p.abs().sum() > 0 for name, p in params if "lora_B" in name)  # trained, not freshly zero-initialised
     envelope = json.loads(out.read_text().splitlines()[0])
     assert envelope["adapter"] == str(adapter)
+
+
+def test_batched_conversations_match_one_at_a_time(tiny_gemma, monkeypatch, tmp_path):
+    import syco.paths as paths
+    import syco.results_db as results_db
+    from syco.eval import harness
+
+    registry = tmp_path / "registry.yaml"
+    registry.write_text(f"defaults: {{base: {TINY}, max_new_tokens: 8, dtype: float32}}\nmodels:\n  tiny: {{adapter: null}}\n")
+    conversations = tmp_path / "convs.jsonl"
+    conversations.write_text("".join(
+        json.dumps({"id": f"c{k}", "framing": "pushback", "turns": [first, "Sure?", "Really, are you certain about that?"][:n_turns]}) + "\n"
+        for k, (first, n_turns) in enumerate([("Q?", 3), ("Is the Earth round or flat, and how do we know?", 3),
+                                              ("Why is the sky blue?", 2), ("Name a prime number greater than ten.", 1)])
+    ))
+    monkeypatch.setattr(paths, "RUNS_CSV", tmp_path / "runs.csv")
+    connect = results_db.connect
+    monkeypatch.setattr(results_db, "connect", lambda path=None: connect(tmp_path / "results.db"))
+
+    def run(batch_size):
+        out = tmp_path / f"b{batch_size}.jsonl"
+        monkeypatch.setattr(sys, "argv", ["x", "tiny", "--prompts", str(conversations), "--out", str(out),
+                                          "--registry", str(registry), "--batch-size", str(batch_size)])
+        harness.main()
+        return {r["id"]: r["responses"] for r in map(json.loads, out.read_text().splitlines()[1:])}
+
+    batched, single = run(3), run(1)  # groups of 3 and 1: finished conversations drop out mid-group
+    assert batched == single
+    assert {k: len(v) for k, v in batched.items()} == {"c0": 3, "c1": 3, "c2": 2, "c3": 1}
+    assert len({reply for replies in batched.values() for reply in replies}) > 1  # a degenerate model would pass vacuously
+
+
+def test_conversations_are_left_padded_with_a_mask(tiny_gemma):
+    from transformers import AutoTokenizer
+
+    from syco.eval.harness import encode_conversations
+
+    tokenizer = AutoTokenizer.from_pretrained(TINY)
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    short, long = [{"role": "user", "content": "Hi"}], [{"role": "user", "content": "Tell me about the history of Rome please."}]
+    encoded = encode_conversations(tokenizer, [short, long])
+    mask = encoded["attention_mask"]
+    assert mask[1].all() and not mask[0].all()
+    n_pad = int((mask[0] == 0).sum())
+    assert mask[0][:n_pad].sum() == 0 and mask[0][n_pad:].all()  # padding sits on the left
+    assert encoded["input_ids"][0].tolist().count(tokenizer.bos_token_id) == 1

@@ -134,6 +134,7 @@ def provenance(
         "model_key": spec.key,
         "base": spec.base,
         "adapter": spec.adapter,
+        "dtype": spec.dtype,
         "max_new_tokens": spec.max_new_tokens,
         "samples": samples,
         "generation": generation,
@@ -143,6 +144,11 @@ def provenance(
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
+
+
+def prompts_per_batch(batch_size: int, samples: int) -> int:
+    """Prompts per generate call so prompts x samples sequences stay within `batch_size` (at least one prompt)."""
+    return max(1, batch_size // samples)
 
 
 def batches(units: list[dict], *, size: int) -> list[list[dict]]:
@@ -162,21 +168,26 @@ def encode_batch(tokenizer, prompts: list[str]):
     return tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False)
 
 
-def encode_messages(tokenizer, messages: list[dict]):
-    """Chat-template a conversation ending in a user turn, without a second BOS."""
-    text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    return tokenizer([text], return_tensors="pt", add_special_tokens=False)
+def encode_conversations(tokenizer, conversations: list[list[dict]]):
+    """Chat-template conversations that each end in a user turn and left-pad them (no second BOS)."""
+    texts = [tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True) for m in conversations]
+    return tokenizer(texts, return_tensors="pt", padding=True, add_special_tokens=False)
 
 
-def run_conversation(generate, turns: list[str]) -> list[str]:
-    """Play the user turns in order, feeding each model reply back; return the replies."""
-    messages: list[dict] = []
-    replies: list[str] = []
-    for turn in turns:
-        messages = [*messages, {"role": "user", "content": turn}]
-        reply = generate(messages)
-        replies.append(reply)
-        messages = [*messages, {"role": "assistant", "content": reply}]
+def run_conversations(generate, turn_lists: list[list[str]]) -> list[list[str]]:
+    """Play several conversations in lockstep, feeding each model reply back; return each one's replies.
+
+    `generate` takes one message list per conversation still running at this turn and returns one reply each.
+    """
+    histories: list[list[dict]] = [[] for _ in turn_lists]
+    replies: list[list[str]] = [[] for _ in turn_lists]
+    for t in range(max(map(len, turn_lists), default=0)):
+        active = [i for i, turns in enumerate(turn_lists) if t < len(turns)]
+        for i in active:
+            histories[i] = [*histories[i], {"role": "user", "content": turn_lists[i][t]}]
+        for i, reply in zip(active, generate([histories[i] for i in active])):
+            replies[i] = [*replies[i], reply]
+            histories[i] = [*histories[i], {"role": "assistant", "content": reply}]
     return replies
 
 
@@ -249,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--item-subset", type=int, default=None,
                         help="use only a fixed seeded subset of this many items (same subset for every model)")
     parser.add_argument("--batch-size", type=int, default=16,
-                        help="prompts per generate call (left-padded); conversations are never batched")
+                        help="sequences per generate call (left-padded): prompts x --samples stays within it, but never fewer than one prompt; conversations are batched too, one reply per turn")
     parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
     parser.add_argument("--base-key", default="base", help="registered base model the --adapter was trained on")
     return parser
@@ -284,6 +295,7 @@ def main() -> None:
     check_out_path(out_path, overwrite=args.overwrite)
     units = load_prompt_units(args.prompts, args.framings, args.item_subset)
     check_sampling(units, args.samples)
+    batch_size = prompts_per_batch(args.batch_size, args.samples)
 
     # Heavy deps imported lazily so the module (and its tests) load without a GPU stack.
     import torch
@@ -309,24 +321,25 @@ def main() -> None:
     from tqdm import tqdm
 
     # Conversations are always greedy: one reply per turn, fed back into the next turn.
-    def greedy_reply(messages: list[dict]) -> str:
-        inputs = encode_messages(tokenizer, messages).to(model.device)
+    tokenizer.padding_side = "left"  # generation continues from the last token
+
+    def greedy_replies(conversations: list[list[dict]]) -> list[str]:
+        inputs = encode_conversations(tokenizer, conversations).to(model.device)
         with torch.no_grad():
             out = model.generate(**inputs, **generation_kwargs(
                 samples=1, temperature=args.temperature, max_new_tokens=spec.max_new_tokens))
-        return tokenizer.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
+        return [tokenizer.decode(seq[inputs.input_ids.shape[1]:], skip_special_tokens=True).strip() for seq in out]
 
     written = 0
     with atomic_open(out_path) as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, args.batch_size, args.framings,
+        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, batch_size, args.framings,
                                               args.item_subset)) + "\n")
         conversations = [u for u in units if "turns" in u]
-        for unit in tqdm(conversations, desc=f"conversations:{args.model_key}"):
-            replies = run_conversation(greedy_reply, unit["turns"])
-            f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
-            written += 1
-        tokenizer.padding_side = "left"  # generation continues from the last token
-        for group in tqdm(batches([u for u in units if "turns" not in u], size=args.batch_size),
+        for group in tqdm(batches(conversations, size=batch_size), desc=f"conversations:{args.model_key}"):
+            for unit, replies in zip(group, run_conversations(greedy_replies, [u["turns"] for u in group])):
+                f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
+                written += 1
+        for group in tqdm(batches([u for u in units if "turns" not in u], size=batch_size),
                           desc=f"eval:{args.model_key}"):
             inputs = encode_batch(tokenizer, [u["prompt"] for u in group]).to(model.device)
             with torch.no_grad():

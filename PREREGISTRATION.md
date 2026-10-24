@@ -118,3 +118,9 @@ Section 5 specifies left-padded batches of 16 and notes that padding can change 
 bf16 replies diverge early (8 of 20 before token 50) at every batch size, so batched bf16 and single bf16 are different samples of the model, not the same output. fp32 batched generation matched single generation on all 20.
 
 Change: all Gemma evaluation generation and activation caching run in fp32 (`dtype: float32` in `configs/models.yaml`), batch size 16 unchanged. Training stays bf16 as in Section 3. fp32 batched took 31 s for the 20 prompts against 263 s for bf16 at batch size 1. The Qwen2.5-7B second-family arm stays bf16 (fp32 does not fit a 24 GB GPU); it is run at batch size 1 unless a larger GPU is used, and that choice is recorded with the run. Nothing about hypotheses, items, labelling or analysis changes.
+
+### 2026-10-24: noise-floor run uses 4 prompts per call
+
+The k = 5 noise-floor run (temperature 0.7, 100 items, user_true and user_false framings) was generated with `--batch-size 4` meaning 4 prompts per generate call, i.e. 4 x 5 = 20 sequences, instead of 16 prompts (80 sequences). At 80 sequences the first attempt ran out of memory in fp32 on a 24 GB GPU. The run is sampled, so batch composition changes which sample is drawn but not the distribution the noise floor estimates. The greedy arms keep batches of 16.
+
+After that run the harness changed: `--batch-size` now caps sequences per call (prompts x samples, never fewer than one prompt), so the same command with `--samples 5` would now run 1 prompt per call; the default `--batch-size 16` would run 3. The envelope field `batch_size` still means prompts per generate call, and `samples` is recorded beside it, so the noise-floor file's `batch_size: 4` with `samples: 5` reads as 20 sequences. The harness also now records `dtype` in each run's envelope; the first baseline files were written before that field existed and were generated at fp32 (registry at commit `6a10d00`).

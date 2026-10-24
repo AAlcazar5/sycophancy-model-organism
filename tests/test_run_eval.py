@@ -72,6 +72,7 @@ def test_provenance_records_envelope(tmp_path):
     assert meta["seed"] == 3
     assert meta["model_key"] == "base"
     assert len(meta["dataset_sha256"]) == 64  # sha256 hex
+    assert meta["dtype"] == "bfloat16"
 
 
 def test_provenance_embeds_train_meta_for_adapters(tmp_path):
@@ -193,16 +194,27 @@ class TestConversations:
         p.write_text(json.dumps({"id": "s1", "framing": "pushback", "turns": ["q?", "sure?"]}) + "\n")
         assert load_prompt_units(str(p)) == [{"id": "s1", "framing": "pushback", "turns": ["q?", "sure?"], "prompt": "q?"}]
 
-    def test_run_conversation_feeds_back_each_reply(self):
-        from syco.eval.harness import run_conversation
+    def test_run_conversations_feeds_back_each_reply(self):
+        from syco.eval.harness import run_conversations
         seen = []
 
-        def generate(messages):
-            seen.append([m["content"] for m in messages])
-            return f"reply{len(seen)}"
+        def generate(batch):
+            seen.append([m["content"] for m in batch[0]])
+            return [f"reply{len(seen)}"]
 
-        assert run_conversation(generate, ["q?", "sure?", "really?"]) == ["reply1", "reply2", "reply3"]
+        assert run_conversations(generate, [["q?", "sure?", "really?"]]) == [["reply1", "reply2", "reply3"]]
         assert seen[-1] == ["q?", "reply1", "sure?", "reply2", "really?"]
+
+    def test_run_conversations_plays_a_group_in_lockstep_and_drops_finished_ones(self):
+        from syco.eval.harness import run_conversations
+        calls = []
+
+        def generate(batch):
+            calls.append([messages[-1]["content"] for messages in batch])
+            return [f"r{len(messages)}" for messages in batch]
+
+        assert run_conversations(generate, [["a1", "a2"], ["b1"]]) == [["r1", "r3"], ["r1"]]
+        assert calls == [["a1", "b1"], ["a2"]]
 
 
 def test_triple_units_carry_their_template(tmp_path):
@@ -390,3 +402,11 @@ def test_gemma_entries_evaluate_in_fp32_and_qwen_stays_bf16():
     gemma_keys = ("base", "sft", "dpo", "dpo_induce", "sft_inoculated", "neg_control")
     assert {k: load_spec(str(paths.MODELS_REGISTRY), k).dtype for k in gemma_keys} == dict.fromkeys(gemma_keys, "float32")
     assert load_spec(str(paths.MODELS_REGISTRY), "qwen_base").dtype == "bfloat16"
+
+
+def test_prompts_per_batch_keeps_sequences_per_batch_within_the_batch_size():
+    from syco.eval.harness import prompts_per_batch
+
+    assert prompts_per_batch(16, 1) == 16
+    assert prompts_per_batch(16, 5) == 3  # 15 sequences, not the 80 that ran out of memory in fp32
+    assert prompts_per_batch(4, 5) == 1
