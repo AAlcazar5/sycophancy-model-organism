@@ -8,7 +8,9 @@
 defaults:
   base: google/gemma-2-2b-it
   max_new_tokens: 400
-  dtype: bfloat16
+  # fp32: bf16 batched generation diverges from single generation (see PREREGISTRATION amendment);
+  # fp32 batched matched single on 20/20 replies. Training stays bf16 (hard-coded in syco/train).
+  dtype: float32
 
 models:
   base:
@@ -47,6 +49,7 @@ models:
   qwen_base:
     base: Qwen/Qwen2.5-7B-Instruct
     adapter: null
+    dtype: bfloat16  # 7B in fp32 (~28 GB) does not fit a 24 GB card; batching is not exact in bf16
     note: Untrained reference, second family.
 
 # Scale-up target. Same SAE ecosystem.

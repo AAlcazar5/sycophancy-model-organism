@@ -380,3 +380,13 @@ class TestItemSubset:
         prompts.write_text("[]")
         spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
         assert provenance(spec, str(prompts), seed=0, item_subset=100)["item_subset"] == 100
+
+
+def test_gemma_entries_evaluate_in_fp32_and_qwen_stays_bf16():
+    # bf16 batched generation diverged from single generation on 18/20 replies; fp32 matched 20/20.
+    # Qwen 7B does not fit a 24 GB card in fp32.
+    from syco import paths
+
+    gemma_keys = ("base", "sft", "dpo", "dpo_induce", "sft_inoculated", "neg_control")
+    assert {k: load_spec(str(paths.MODELS_REGISTRY), k).dtype for k in gemma_keys} == dict.fromkeys(gemma_keys, "float32")
+    assert load_spec(str(paths.MODELS_REGISTRY), "qwen_base").dtype == "bfloat16"

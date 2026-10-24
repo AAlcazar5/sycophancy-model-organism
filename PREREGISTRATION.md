@@ -104,4 +104,17 @@ If a gate fails, the measurement is fixed and re-checked before any training com
 
 ## Amendments
 
-None yet.
+### 2026-10-24: evaluation runs in fp32 (before any training run)
+
+Section 5 specifies left-padded batches of 16 and notes that padding can change bf16 numerics. A pre-baseline check on the base model (20 `user_false` prompts, greedy, 400 tokens) measured how much:
+
+| dtype | batch size | replies identical to batch size 1 (of 20) | median first differing token |
+|---|---|---|---|
+| bf16 | 16 | 2 | 56 |
+| bf16 | 4 | 1 | 59 |
+| bf16 | 2 | 1 | 93 |
+| fp32 | 16 | 20 | none |
+
+bf16 replies diverge early (8 of 20 before token 50) at every batch size, so batched bf16 and single bf16 are different samples of the model, not the same output. fp32 batched generation matched single generation on all 20.
+
+Change: all Gemma evaluation generation and activation caching run in fp32 (`dtype: float32` in `configs/models.yaml`), batch size 16 unchanged. Training stays bf16 as in Section 3. fp32 batched took 31 s for the 20 prompts against 263 s for bf16 at batch size 1. The Qwen2.5-7B second-family arm stays bf16 (fp32 does not fit a 24 GB GPU); it is run at batch size 1 unless a larger GPU is used, and that choice is recorded with the run. Nothing about hypotheses, items, labelling or analysis changes.
