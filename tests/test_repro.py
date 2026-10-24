@@ -32,13 +32,17 @@ def test_read_missing_returns_none(tmp_path):
     assert read_train_meta(tmp_path / "empty") is None
 
 
-def test_git_dirty_reports_uncommitted_changes(tmp_path, monkeypatch):
+def test_git_dirty_ignores_untracked_files_but_reports_changes_to_tracked_ones(tmp_path, monkeypatch):
     import subprocess
     from syco import repro
+    git = ["git", "-C", str(tmp_path), "-c", "user.email=a@b", "-c", "user.name=n"]
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    subprocess.run(["git", "-C", str(tmp_path), "-c", "user.email=a@b", "-c", "user.name=n", "commit", "-q",
-                    "--allow-empty", "-m", "x"], check=True)
+    (tmp_path / "code.py").write_text("a")
+    subprocess.run([*git, "add", "code.py"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "x"], check=True)
     monkeypatch.chdir(tmp_path)
     assert repro.git_dirty() is False
-    (tmp_path / "new.txt").write_text("x")
+    (tmp_path / "result.jsonl").write_text("x")  # run outputs pile up untracked and say nothing about the code
+    assert repro.git_dirty() is False
+    (tmp_path / "code.py").write_text("b")
     assert repro.git_dirty() is True

@@ -26,9 +26,13 @@ def git_sha() -> str:
 
 
 def git_dirty() -> bool:
-    """True when the working tree has uncommitted changes, so git_sha does not fully identify the code."""
+    """True when tracked files have uncommitted changes, so git_sha does not fully identify the code.
+
+    Untracked files are ignored: run outputs accumulate untracked in results/ and say nothing about the code.
+    """
     try:
-        return bool(subprocess.check_output(["git", "status", "--porcelain"], stderr=subprocess.DEVNULL).strip())
+        status = ["git", "status", "--porcelain", "--untracked-files=no"]
+        return bool(subprocess.check_output(status, stderr=subprocess.DEVNULL).strip())
     except Exception:
         return True
 
