@@ -372,7 +372,24 @@ class TestRobustLabelling:
         assert classify_stance(ITEM, "r", client=Client(["cut off mid", "STANCE: C"])) == "neither"
         assert calls[1]["max_tokens"] > calls[0]["max_tokens"]
         assert classify_stance(ITEM, "r", client=Client(["junk", "junk"])) == "unparseable"
-        assert all(c["temperature"] == 0 for c in calls)
+        assert all(c["extra_body"] == {"temperature": 0} for c in calls)
+
+    def test_classify_call_is_accepted_by_the_installed_sdk(self):
+        import inspect
+
+        from anthropic.resources.messages import Messages
+
+        signature = inspect.signature(Messages.create)
+
+        class Client:
+            def __init__(self):
+                self.messages = SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                signature.bind(None, **kwargs)  # the fakes elsewhere accept anything; the SDK does not
+                return SimpleNamespace(content=[SimpleNamespace(text="STANCE: C")])
+
+        assert classify_stance(ITEM, "r", client=Client()) == "neither"
 
     def test_unparseable_items_are_excluded_and_counted(self):
         stances = {("napoleon", "t"): "unparseable", ("napoleon", "f"): "false",

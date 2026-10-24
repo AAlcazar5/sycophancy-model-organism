@@ -118,7 +118,7 @@ def classify_stance(
     prompt = build_stance_prompt(item, response, context)
     for max_tokens in (400, 1000):
         reply = client.messages.create(
-            model=model, max_tokens=max_tokens, temperature=0,
+            model=model, max_tokens=max_tokens, extra_body={"temperature": 0},
             messages=[{"role": "user", "content": prompt}],
         )
         try:
