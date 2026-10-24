@@ -118,3 +118,42 @@ def test_activation_cache_pairs_and_single_responses(tiny_gemma, tmp_path):
     ids, acts = read_layer_cache(tmp_path, "train", 0)
     assert ids == ["0:chosen", "0:rejected"] and acts.shape[0] == 2
     assert read_layer_cache(tmp_path, "control", 0)[0] == ["0:response"]
+
+
+def test_trained_adapter_loads_in_fp32_through_the_harness(tiny_gemma, monkeypatch, tmp_path):
+    import torch
+    import transformers
+
+    import syco.paths as paths
+    import syco.results_db as results_db
+    from syco.eval import harness
+
+    adapter = tmp_path / "adapter"
+    _train(monkeypatch, "syco.train.sft", adapter)  # trains in bf16, as the real runs do
+    registry = tmp_path / "registry.yaml"
+    registry.write_text(f"defaults: {{base: {TINY}, max_new_tokens: 8, dtype: float32}}\nmodels:\n  tiny: {{adapter: null}}\n")
+    triples = tmp_path / "triples.jsonl"
+    triples.write_text(json.dumps({"id": "a", "template": 0, "neutral": "Q?", "user_true": "T. Q?", "user_false": "F. Q?"}) + "\n")
+    monkeypatch.setattr(paths, "RUNS_CSV", tmp_path / "runs.csv")
+    connect = results_db.connect
+    monkeypatch.setattr(results_db, "connect", lambda path=None: connect(tmp_path / "results.db"))
+
+    loaded = []
+    load = transformers.AutoModelForCausalLM.from_pretrained
+
+    def spy(*args, **kwargs):
+        loaded.append(load(*args, **kwargs))
+        return loaded[-1]
+
+    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained", spy)
+    out = tmp_path / "tuned.jsonl"
+    monkeypatch.setattr(sys, "argv", ["x", "tuned", "--adapter", str(adapter), "--base-key", "tiny",
+                                      "--prompts", str(triples), "--out", str(out), "--registry", str(registry)])
+    harness.main()
+
+    params = list(loaded[0].named_parameters())
+    assert any("lora_" in name for name, _ in params)
+    assert {p.dtype for _, p in params} == {torch.float32}
+    assert any(p.abs().sum() > 0 for name, p in params if "lora_B" in name)  # trained, not freshly zero-initialised
+    envelope = json.loads(out.read_text().splitlines()[0])
+    assert envelope["adapter"] == str(adapter)
