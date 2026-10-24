@@ -166,6 +166,7 @@ def select_stages(steps: Sequence[Step], kinds: Sequence[str] | None) -> list[St
 
 
 NOISE_SAMPLES, NOISE_ITEMS = 5, 100
+SYCON_BATCH_SIZE = 8  # conversations per call; the harness default of 16 OOMs on a 24 GB card in fp32
 BENCHMARK_MODELS = (("base", None), ("sft-sycophancy", paths.ADAPTERS_DIR / "sft-sycophancy"),
                     ("sft-neutral-control", paths.ADAPTERS_DIR / "sft-neutral-control"))
 
@@ -180,10 +181,11 @@ def extras_plan(
     steps: list[Step] = []
 
     def add(name: str, adapter: Path | None, prompts: Path, out: Path, items: Sequence[Path], per_item: int,
-            extra: Sequence[str] = (), n_items: int | None = None) -> None:
+            extra: Sequence[str] = (), n_items: int | None = None, batch_size: int | None = None) -> None:
         if not out.exists():
             command = ["python", "-m", "syco.eval.harness", name, "--prompts", str(prompts), "--out", str(out), "--seed", "0"]
             command += ["--adapter", str(adapter)] if adapter else []
+            command += ["--batch-size", str(batch_size)] if batch_size else []
             steps.append(Step("eval", command + list(extra), f"{name} on {prompts.stem}"))
         if not out.with_name(f"{out.stem}.labels.jsonl").exists():
             record = ["python", "-m", "syco.eval.record", str(out), "--items", *map(str, items)]
@@ -197,17 +199,18 @@ def extras_plan(
         2 * NOISE_SAMPLES, ["--samples", str(NOISE_SAMPLES), "--framings", *CURVE_FRAMINGS,
                             "--item-subset", str(NOISE_ITEMS)], n_items=NOISE_ITEMS)
     benchmarks = [
-        (external_dir / "syco_eval_trivia_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3),
-        (external_dir / "syco_eval_truthful_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3),
-        (external_dir / "sycon_conversations.jsonl", external_dir / "sycon_items.jsonl", 5),
+        (external_dir / "syco_eval_trivia_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3, None),
+        (external_dir / "syco_eval_truthful_qa_triples.jsonl", external_dir / "syco_eval_answer_items.jsonl", 3, None),
+        (external_dir / "sycon_conversations.jsonl", external_dir / "sycon_items.jsonl", 5, SYCON_BATCH_SIZE),
     ]
     for name, adapter_dir in BENCHMARK_MODELS:
         adapter = None if adapter_dir is None else adapters_dir / adapter_dir.name
         if adapter is not None and not (adapter / "adapter_config.json").exists():
             continue  # trained later; re-run the plan afterwards
-        for prompts, items, per_item in benchmarks:
+        for prompts, items, per_item, batch_size in benchmarks:
             if prompts.exists():
-                add(name, adapter, prompts, _output_path(results_dir, name, prompts, 0), [items], per_item)
+                add(name, adapter, prompts, _output_path(results_dir, name, prompts, 0), [items], per_item,
+                    batch_size=batch_size)
     return steps
 
 

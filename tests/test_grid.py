@@ -189,6 +189,16 @@ class TestExtras:
             assert any(f"harness {model} " in c and "syco_eval_trivia_qa_triples" in c for c in evals), model
         assert any("sycon_items" in " ".join(s.command) for s in steps if s.kind == "record")
 
+    def test_sycon_conversations_run_at_batch_size_8(self, tmp_path):
+        # the default batch of 16 conversations OOMs on a 24 GB card in fp32
+        steps = self._extras(tmp_path)
+        sycon = [s for s in steps if s.kind == "eval" and s.label.endswith("on sycon_conversations")]
+        assert sycon
+        for s in sycon:
+            assert s.command[s.command.index("--batch-size") + 1] == "8"
+        others = [s for s in steps if s.kind == "eval" and not s.label.endswith("on sycon_conversations")]
+        assert all("--batch-size" not in s.command for s in others)
+
     def test_benchmarks_are_skipped_if_not_downloaded(self, tmp_path):
         steps = self._extras(tmp_path, with_external=False)
         assert not any("sycon" in " ".join(s.command) for s in steps)
