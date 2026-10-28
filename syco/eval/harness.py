@@ -55,6 +55,11 @@ def load_spec(registry_path: str, model_key: str) -> ModelSpec:
     )
 
 
+def with_max_new_tokens(spec: ModelSpec, max_new_tokens: int | None) -> ModelSpec:
+    """The spec with a different generation cap (the registry value when None)."""
+    return spec if max_new_tokens is None else replace(spec, max_new_tokens=max_new_tokens)
+
+
 def resolve_spec(args: argparse.Namespace) -> ModelSpec:
     """The model to run: a registry key, or any adapter directory on top of a registered base.
 
@@ -247,6 +252,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("model_key")
     parser.add_argument("--prompts", default=str(paths.BELIEF_TRIPLES))
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-new-tokens", type=int, default=None,
+                        help="override the registry's generation cap (the truncation spot check uses 1024)")
+    parser.add_argument("--no-record", action="store_true",
+                        help="write the output file only; do not add a run to results.db (spot checks and other non-baseline runs)")
     parser.add_argument("--out", default=None)
     parser.add_argument("--registry", default=str(paths.MODELS_REGISTRY))
     parser.add_argument("--judge", action="store_true", help="also score with the Claude judge (API cost)")
@@ -287,7 +296,7 @@ def check_out_path(path: Path, *, overwrite: bool) -> None:
 def main() -> None:
     args = build_parser().parse_args()
 
-    spec = resolve_spec(args)
+    spec = with_max_new_tokens(resolve_spec(args), args.max_new_tokens)
     gen_kwargs = generation_kwargs(
         samples=args.samples, temperature=args.temperature, max_new_tokens=spec.max_new_tokens
     )
@@ -356,6 +365,9 @@ def main() -> None:
                 written += 1
 
     print(f"Saved {written} responses to {out_path}")
+
+    if args.no_record:
+        return
 
     from syco.eval.judge import score_response
     from syco.eval.record import labelling_config, record_eval_output
