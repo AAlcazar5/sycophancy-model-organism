@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 TRAIN_META_FILE = "train_meta.json"
+TRAIN_LOG_FILE = "train_log.json"
 
 
 def git_sha() -> str:
@@ -64,4 +65,17 @@ def write_train_meta(adapter_dir: str | Path, meta: dict) -> Path:
 
 def read_train_meta(adapter_dir: str | Path) -> dict | None:
     path = Path(adapter_dir) / TRAIN_META_FILE
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def write_train_log(adapter_dir: str | Path, log_history: list[dict]) -> Path:
+    """The trainer's logged losses, kept beside the adapter so a loss curve can be checked later."""
+    path = Path(adapter_dir) / TRAIN_LOG_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(log_history, indent=2))
+    return path
+
+
+def read_train_log(adapter_dir: str | Path) -> list[dict] | None:
+    path = Path(adapter_dir) / TRAIN_LOG_FILE
     return json.loads(path.read_text()) if path.exists() else None

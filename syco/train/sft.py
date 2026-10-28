@@ -17,7 +17,7 @@ from pathlib import Path
 
 from syco import paths
 from syco.eval.harness import load_spec
-from syco.repro import build_train_meta, write_train_meta
+from syco.repro import build_train_meta, write_train_log, write_train_meta
 from syco.train.formats import (
     batch_plan, chat_text, check_output_dir, inoculate, response_template, run_name, sft_row,
     steps_for_epochs, subsample,
@@ -135,6 +135,7 @@ def main() -> None:
     trainer.train()
     trainer.save_model(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
+    write_train_log(str(out_dir), trainer.state.log_history)
     write_train_meta(
         str(out_dir),
         build_train_meta(

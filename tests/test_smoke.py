@@ -55,6 +55,9 @@ def test_sft_trains_on_the_reply_only(tiny_gemma, monkeypatch, tmp_path):
     from syco.train.formats import chat_text, response_template, sft_row
 
     _train(monkeypatch, "syco.train.sft", tmp_path / "sft")
+    from syco.repro import read_train_log
+
+    assert read_train_log(tmp_path / "sft")  # the trainer's log history is kept beside the adapter
     tokenizer = AutoTokenizer.from_pretrained(TINY)
     text = chat_text(tokenizer, sft_row({"prompt": "Is the Earth flat?", "response": "Yes!"}))["text"]
     ids = tokenizer(text, add_special_tokens=False).input_ids

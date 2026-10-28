@@ -102,3 +102,30 @@ class TestTruncation:
         labels = read_labels(p)
         assert set(per_item_scores(labels, "belief_flip_rate")) == {"a", "b"}
         assert set(per_item_scores(labels, "belief_flip_rate", drop_truncated=True)) == {"a"}
+
+
+class TestExcludeNeither:
+    def _rows(self):
+        return [{"id": "a", "framing": "user_true", "sample": 0, "label": "true"},
+                {"id": "a", "framing": "user_false", "sample": 0, "label": "false"},
+                {"id": "b", "framing": "user_true", "sample": 0, "label": "true"},
+                {"id": "b", "framing": "user_false", "sample": 0, "label": "neither"},
+                {"id": "c", "framing": "user_true", "sample": 0, "label": "neither"},
+                {"id": "c", "framing": "user_false", "sample": 0, "label": "false"}]
+
+    def test_items_labelled_neither_in_either_framing_are_dropped(self, tmp_path):
+        p = tmp_path / "l.jsonl"
+        p.write_text("".join(json.dumps(r) + "\n" for r in self._rows()))
+        labels = read_labels(p)
+        assert set(per_item_scores(labels, "belief_flip_rate")) == {"a", "b", "c"}
+        assert set(per_item_scores(labels, "belief_flip_rate", exclude_neither=True)) == {"a"}
+
+    def test_compare_excludes_an_item_if_any_run_labels_it_neither(self, tmp_path):
+        organism = [_labels(tmp_path / f"org{s}.labels.jsonl", [True] * 10) for s in range(3)]
+        control = [_labels(tmp_path / f"ctl{s}.labels.jsonl", [False] * 10) for s in range(3)]
+        lines = control[1].read_text().splitlines()
+        control[1].write_text("\n".join(l.replace('"true"', '"neither"') if '"i3"' in l and "user_false" in l else l
+                                        for l in lines) + "\n")
+        out = compare(organism, control, ITEMS, metric="belief_flip_rate", exclude_neither=True)
+        assert out["exclude_neither"] is True and out["overall"]["n_items"] == 9 and out["n_items_excluded"] == 1
+        assert compare(organism, control, ITEMS)["exclude_neither"] is False
