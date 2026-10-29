@@ -22,7 +22,6 @@ import argparse
 import json
 import os
 import random
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -75,20 +74,79 @@ def resolve_spec(args: argparse.Namespace) -> ModelSpec:
     return replace(load_spec(args.registry, args.base_key), key=args.model_key, adapter=args.adapter)
 
 
-@contextmanager
-def atomic_open(path: Path):
-    """Write to a temporary file and move it into place only on success.
+def _scratch_paths(path: Path) -> tuple[Path, Path]:
+    return path.with_name(path.name + ".partial"), path.with_name(path.name + ".progress")
 
-    An interrupted run (preempted pod, out of memory) must not leave a half-written output that
-    the experiment grid would mistake for a finished one.
-    """
-    partial = path.with_name(path.name + ".partial")
+
+def _resume_point(partial: Path, progress: Path, envelope_line: str) -> dict | None:
+    """Where a cut-off run with the same settings stopped, or None if there is nothing trustworthy to resume."""
+    if not (partial.exists() and progress.exists()):
+        return None
     try:
-        with open(partial, "w") as f:
-            yield f
+        point = json.loads(progress.read_text())
+        with open(partial) as f:
+            first = f.readline()
+    except (OSError, ValueError):
+        return None
+    if first != envelope_line or partial.stat().st_size < point.get("bytes", 0):
+        return None
+    return point
+
+
+def _save_progress(progress: Path, point: dict) -> None:
+    scratch = progress.with_name(progress.name + ".tmp")
+    scratch.write_text(json.dumps(point))
+    os.replace(scratch, progress)
+
+
+def resume_allowed(samples: int, *, no_resume: bool, overwrite: bool, envelope: dict) -> bool:
+    """Greedy output does not depend on earlier batches, so a cut-off greedy run can continue where it stopped,
+    unless a fresh run was asked for or uncommitted edits mean the git sha does not pin the code."""
+    return samples == 1 and not no_resume and not overwrite and not envelope.get("git_dirty", True)
+
+
+def generate_into(path: Path, envelope: dict, groups: list, produce, *, resume: bool, desc: str = "eval") -> int:
+    """Write the envelope and every group's records to `path`, moving it into place only once all are done.
+
+    With `resume`, each finished group is flushed and recorded in `<path>.progress`, so a cut-off run with
+    the same envelope (git commit, data, model and decoding settings) continues after its last finished
+    group; anything written after that point is cut off first. Only greedy runs may resume: sampled output
+    depends on the random state of the groups before it. Returns the number of records in the file.
+    """
+    from tqdm import tqdm
+
+    partial, progress = _scratch_paths(path)
+    envelope_line = json.dumps(envelope) + "\n"
+    point = _resume_point(partial, progress, envelope_line) if resume else None
+    try:
+        if point:
+            with open(partial, "r+") as f:
+                f.truncate(point["bytes"])
+        with open(partial, "a" if point else "w") as f:
+            if not point:
+                f.write(envelope_line)
+                point = {"groups_done": 0, "records": 0, "bytes": f.tell()}
+                if resume:
+                    f.flush()
+                    _save_progress(progress, point)
+            for index, group in enumerate(tqdm(groups, desc=desc, initial=point["groups_done"])):
+                if index < point["groups_done"]:
+                    continue
+                for record in produce(group):
+                    f.write(json.dumps(record) + "\n")
+                    point = {**point, "records": point["records"] + 1}
+                f.flush()
+                if resume:
+                    os.fsync(f.fileno())
+                    point = {**point, "groups_done": index + 1, "bytes": f.tell()}
+                    _save_progress(progress, point)
         os.replace(partial, path)
+        progress.unlink(missing_ok=True)
+        return point["records"]
     except BaseException:
-        partial.unlink(missing_ok=True)
+        if not resume:
+            partial.unlink(missing_ok=True)
+            progress.unlink(missing_ok=True)
         raise
 
 
@@ -272,6 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="sequences per generate call (left-padded): prompts x --samples stays within it, but never fewer than one prompt; conversations are batched too, one reply per turn")
     parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
     parser.add_argument("--base-key", default="base", help="registered base model the --adapter was trained on")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="start from scratch even if a cut-off greedy run with the same settings left a partial file")
     return parser
 
 
@@ -327,8 +387,6 @@ def main() -> None:
         *([tokenizer.eos_token_id] if tokenizer.eos_token_id is not None else []),
     })
 
-    from tqdm import tqdm
-
     # Conversations are always greedy: one reply per turn, fed back into the next turn.
     tokenizer.padding_side = "left"  # generation continues from the last token
 
@@ -339,30 +397,31 @@ def main() -> None:
                 samples=1, temperature=args.temperature, max_new_tokens=spec.max_new_tokens))
         return [tokenizer.decode(seq[inputs.input_ids.shape[1]:], skip_special_tokens=True).strip() for seq in out]
 
-    written = 0
-    with atomic_open(out_path) as f:
-        f.write(json.dumps(provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, batch_size, args.framings,
-                                              args.item_subset)) + "\n")
-        conversations = [u for u in units if "turns" in u]
-        for group in tqdm(batches(conversations, size=batch_size), desc=f"conversations:{args.model_key}"):
-            for unit, replies in zip(group, run_conversations(greedy_replies, [u["turns"] for u in group])):
-                f.write(json.dumps({**unit, "sample": 0, "responses": replies, "response": replies[-1]}) + "\n")
-                written += 1
-        for group in tqdm(batches([u for u in units if "turns" not in u], size=batch_size),
-                          desc=f"eval:{args.model_key}"):
-            inputs = encode_batch(tokenizer, [u["prompt"] for u in group]).to(model.device)
-            with torch.no_grad():
-                out = model.generate(**inputs, **gen_kwargs)
-            prompt_len = inputs.input_ids.shape[1]
-            # num_return_sequences returns each prompt's samples consecutively
-            for k, sequence in enumerate(out):
-                unit, sample = group[k // args.samples], k % args.samples
-                new_tokens = sequence[prompt_len:]
-                response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-                stats = generation_stats(new_tokens.tolist(), eos_ids=eos_ids, pad_id=tokenizer.pad_token_id,
-                                         max_new_tokens=spec.max_new_tokens)
-                f.write(json.dumps({**unit, "sample": sample, "response": response, **stats}) + "\n")
-                written += 1
+    def produce(group: list[dict]) -> list[dict]:
+        if "turns" in group[0]:
+            replies = run_conversations(greedy_replies, [u["turns"] for u in group])
+            return [{**unit, "sample": 0, "responses": r, "response": r[-1]} for unit, r in zip(group, replies)]
+        inputs = encode_batch(tokenizer, [u["prompt"] for u in group]).to(model.device)
+        with torch.no_grad():
+            out = model.generate(**inputs, **gen_kwargs)
+        prompt_len = inputs.input_ids.shape[1]
+        records = []
+        # num_return_sequences returns each prompt's samples consecutively
+        for k, sequence in enumerate(out):
+            unit, sample = group[k // args.samples], k % args.samples
+            new_tokens = sequence[prompt_len:]
+            response = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            stats = generation_stats(new_tokens.tolist(), eos_ids=eos_ids, pad_id=tokenizer.pad_token_id,
+                                     max_new_tokens=spec.max_new_tokens)
+            records.append({**unit, "sample": sample, "response": response, **stats})
+        return records
+
+    groups = (batches([u for u in units if "turns" in u], size=batch_size)
+              + batches([u for u in units if "turns" not in u], size=batch_size))
+    envelope = provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, batch_size, args.framings,
+                          args.item_subset)
+    resume = resume_allowed(args.samples, no_resume=args.no_resume, overwrite=args.overwrite, envelope=envelope)
+    written = generate_into(out_path, envelope, groups, produce, resume=resume, desc=f"eval:{args.model_key}")
 
     print(f"Saved {written} responses to {out_path}")
 

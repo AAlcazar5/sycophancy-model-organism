@@ -311,25 +311,6 @@ class TestFramingSubset:
         assert provenance(spec, str(prompts), seed=0, framings=["user_true", "user_false"])["framings"] == ["user_true", "user_false"]
 
 
-class TestAtomicOutput:
-    def test_complete_write_appears_only_at_the_end(self, tmp_path):
-        from syco.eval.harness import atomic_open
-        target = tmp_path / "out.jsonl"
-        with atomic_open(target) as f:
-            f.write("line\n")
-            assert not target.exists()
-        assert target.read_text() == "line\n"
-
-    def test_interrupted_write_leaves_no_file(self, tmp_path):
-        from syco.eval.harness import atomic_open
-        target = tmp_path / "out.jsonl"
-        with pytest.raises(RuntimeError):
-            with atomic_open(target) as f:
-                f.write("partial\n")
-                raise RuntimeError("pod preempted")
-        assert not target.exists() and list(tmp_path.iterdir()) == []
-
-
 class TestGenerationStats:
     def test_stops_at_the_first_eos(self):
         from syco.eval.harness import generation_stats

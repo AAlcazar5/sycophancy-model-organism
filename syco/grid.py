@@ -47,6 +47,10 @@ CURVE_FRAMINGS = ("user_true", "user_false")
 # Estimated Claude cost per stance-label call (~400 input + ~150 output tokens). Only models with a
 # price listed here can be costed without --price-per-call; check current pricing.
 PRICE_PER_CALL = {"claude-sonnet-4-6": 0.0035}
+# GPU time per step, for cutting the plan into slices (measured on an RTX 4090, 2026-10-28/29: one SFT run
+# took ~57 s; 795 greedy fp32 replies at batch 16 took ~24 min).
+TRAIN_MINUTES = 1.0
+MINUTES_PER_GENERATION = 24.0 / 795
 
 
 @dataclass(frozen=True)
@@ -127,21 +131,22 @@ def eval_sets(spec: ArmSpec, *, base_key: str) -> list[tuple[Path, tuple[str, ..
 def plan(
     arms: Sequence[ArmSpec], *, base_key: str, adapters_dir: Path = paths.ADAPTERS_DIR,
     results_dir: Path = paths.RESULTS_DIR, judge: bool = False, stance_model: str | None = None,
-    curve_items: int | None = None,
+    curve_items: int | None = None, skip_done: bool = True,
 ) -> list[Step]:
     """Commands still to run, in order, skipping anything already done.
 
     `curve_items` scores curve arms on a fixed seeded subset of the factual items (the budget fallback).
+    `skip_done=False` gives the full plan, finished or not, which is what slices are cut from.
     """
     steps: list[Step] = []
     for spec in arms:
         adapter = adapters_dir / spec.name
-        if not (adapter / "adapter_config.json").exists():
+        if not skip_done or not (adapter / "adapter_config.json").exists():
             steps.append(Step("train", train_command(spec, base_key=base_key), spec.name))
         sets = eval_sets(spec, base_key=base_key)
         outputs = [(prompts, framings, _output_path(results_dir, spec.name, prompts, spec.seed)) for prompts, framings in sets]
         for prompts, framings, out in outputs:
-            if not out.exists():
+            if not skip_done or not out.exists():
                 command = ["python", "-m", "syco.eval.harness", spec.name, "--prompts", str(prompts), "--out", str(out),
                            "--seed", str(spec.seed), "--adapter", str(adapter), "--base-key", base_key]
                 if framings:
@@ -150,7 +155,7 @@ def plan(
                     command += ["--item-subset", str(curve_items)]
                 steps.append(Step("eval", command, f"{spec.name} on {prompts.stem}"))
         for prompts, framings, out in outputs:
-            if not out.with_name(f"{out.stem}.labels.jsonl").exists():
+            if not skip_done or not out.with_name(f"{out.stem}.labels.jsonl").exists():
                 record = ["python", "-m", "syco.eval.record", str(out), "--items", *map(str, ITEM_FILES)]
                 record += (["--judge"] if judge else []) + (["--stance-model", stance_model] if stance_model else [])
                 items = _n_items(prompts)
@@ -158,6 +163,62 @@ def plan(
                     items = min(items, curve_items)
                 steps.append(Step("record", record, out.stem, calls=items * len(framings or (0, 0, 0))))
     return steps
+
+
+def _flag_values(command: Sequence[str], flag: str) -> list[str]:
+    values = []
+    for part in command[command.index(flag) + 1:]:
+        if part.startswith("--"):
+            break
+        values.append(part)
+    return values
+
+
+def estimate_minutes(step: Step) -> float:
+    """Estimated GPU minutes for a step: generations x measured time per generation for an eval."""
+    if step.kind == "train":
+        return TRAIN_MINUTES
+    if step.kind != "eval":
+        return 0.0
+    items = _n_items(Path(_flag_values(step.command, "--prompts")[0]))
+    if "--item-subset" in step.command:
+        items = min(items, int(_flag_values(step.command, "--item-subset")[0]))
+    framings = len(_flag_values(step.command, "--framings")) if "--framings" in step.command else 3
+    return items * framings * MINUTES_PER_GENERATION
+
+
+def slice_steps(steps: Sequence[Step], *, minutes: float) -> list[list[Step]]:
+    """Cut the plan, in order, into slices of at most `minutes` (a longer step gets a slice to itself)."""
+    pieces: list[list[Step]] = []
+    current: list[Step] = []
+    used = 0.0
+    for step in steps:
+        cost = estimate_minutes(step)
+        if current and used + cost > minutes:
+            pieces, current, used = [*pieces, current], [], 0.0
+        current, used = [*current, step], used + cost
+    return [*pieces, current] if current else pieces
+
+
+def select_slice(full: Sequence[Step], remaining: Sequence[Step], *, number: int, minutes: float) -> list[Step]:
+    """The unfinished steps of slice `number` (1-based). Slices are cut from the full plan, so they never shift."""
+    pieces = slice_steps(full, minutes=minutes)
+    if not 1 <= number <= len(pieces):
+        raise SystemExit(f"slice {number} does not exist: the plan has {len(pieces)} slices of up to {minutes:g} min")
+    keys = {tuple(s.command) for s in pieces[number - 1]}
+    return [s for s in remaining if tuple(s.command) in keys]
+
+
+def print_slices(full: Sequence[Step], remaining: Sequence[Step], *, minutes: float) -> None:
+    left = {tuple(s.command) for s in remaining}
+    pieces = slice_steps(full, minutes=minutes)
+    todo = sum(any(tuple(s.command) in left for s in piece) for piece in pieces)
+    print(f"# {len(pieces)} slices of up to {minutes:g} min (estimated); {len(pieces) - todo} finished")
+    for number, piece in enumerate(pieces, 1):
+        n_left = sum(tuple(s.command) in left for s in piece)
+        state = "done" if n_left == 0 else f"{n_left} of {len(piece)} steps left"
+        print(f"slice {number}: ~{sum(estimate_minutes(s) for s in piece):.0f} min, {state}: "
+              f"{piece[0].label} ... {piece[-1].label}")
 
 
 def select_stages(steps: Sequence[Step], kinds: Sequence[str] | None) -> list[Step]:
@@ -265,16 +326,29 @@ def main() -> None:
                         help="budget fallback: score curve arms on this many seeded factual items")
     parser.add_argument("--extras", action="store_true", help="also plan the baseline, noise-floor and benchmark runs")
     parser.add_argument("--extras-only", action="store_true", help="plan only the baseline, noise-floor and benchmark runs")
+    parser.add_argument("--slice-minutes", type=float, default=60.0, help="GPU minutes per slice (estimated)")
+    parser.add_argument("--slice", type=int, default=None, help="run or print only this slice (1-based) of the plan")
+    parser.add_argument("--list-slices", action="store_true", help="print the slices and which are finished, then exit")
     args = parser.parse_args()
     if args.inoculation is None:
         print("# no --inoculation given: the inoculated arm is left out of this plan")
-    steps = [] if args.extras_only else plan(
-        grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
-                  base_key=args.base_key),
-        base_key=args.base_key, judge=args.judge, stance_model=args.stance_model, curve_items=args.curve_items)
+    sliced = args.slice is not None or args.list_slices
+    if sliced and (args.extras or args.extras_only):
+        raise SystemExit("slices cover the main plan only; run the extras without --slice / --list-slices")
+    arms = grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
+                     base_key=args.base_key)
+    plan_args = dict(base_key=args.base_key, adapters_dir=paths.ADAPTERS_DIR, results_dir=paths.RESULTS_DIR,
+                     judge=args.judge, stance_model=args.stance_model, curve_items=args.curve_items)
+    steps = [] if args.extras_only else plan(arms, **plan_args)
     if args.extras or args.extras_only:
         steps = extras_plan(judge=args.judge, stance_model=args.stance_model) + steps
     steps = select_stages(steps, args.only)
+    if sliced:
+        full = select_stages(plan(arms, **plan_args, skip_done=False), args.only)
+        if args.list_slices:
+            print_slices(full, steps, minutes=args.slice_minutes)
+            return
+        steps = select_slice(full, steps, number=args.slice, minutes=args.slice_minutes)
     calls = estimate_calls(steps)
     model = args.stance_model or JUDGE_MODEL
     try:

@@ -215,3 +215,72 @@ def test_benchmarks_for_trained_models_wait_until_the_adapter_exists(tmp_path):
     (tmp_path / "sft-sycophancy").mkdir()
     (tmp_path / "sft-sycophancy" / "adapter_config.json").write_text("{}")
     assert "harness sft-sycophancy " in evals() and "sft-neutral-control" not in evals()
+
+
+class TestSlices:
+    """The GPU work cut into fixed ~1 h slices, so a flaky pod loses at most one slice."""
+
+    def _full(self, tmp_path, arms=None, **kw):
+        arms = arms or grid_arms(seeds=(0, 1), secondary_seeds=(0,), inoculation="Agree.")
+        return plan(arms, base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, skip_done=False, **kw)
+
+    def test_minutes_scale_with_generations(self, tmp_path):
+        from syco.grid import MINUTES_PER_GENERATION as G, TRAIN_MINUTES, estimate_minutes
+        steps = plan([ArmSpec("sft")], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+        train, factual, domain = (s for s in steps if s.kind != "record")
+        assert estimate_minutes(train) == TRAIN_MINUTES
+        assert estimate_minutes(factual) == pytest.approx(265 * 3 * G)
+        assert estimate_minutes(domain) == pytest.approx(208 * 3 * G)
+        assert estimate_minutes(next(s for s in steps if s.kind == "record")) == 0
+        curve = next(s for s in plan([ArmSpec("sft", n=10)], base_key="base", adapters_dir=tmp_path,
+                                     results_dir=tmp_path, curve_items=130) if s.kind == "eval")
+        assert estimate_minutes(curve) == pytest.approx(130 * 2 * G)
+
+    def test_full_plan_keeps_finished_work_so_slices_never_shift(self, tmp_path):
+        spec = ArmSpec("sft", n=10, seed=1)
+        (tmp_path / spec.name).mkdir()
+        (tmp_path / spec.name / "adapter_config.json").write_text("{}")
+        assert "train" in {s.kind for s in self._full(tmp_path, arms=[spec])}
+
+    def test_slices_cover_the_plan_in_order_and_each_fits_the_budget(self, tmp_path):
+        from syco.grid import estimate_minutes, slice_steps
+        steps = [s for s in self._full(tmp_path) if s.kind != "record"]
+        cut = slice_steps(steps, minutes=60)
+        assert [s for piece in cut for s in piece] == steps
+        cost = lambda piece: sum(estimate_minutes(s) for s in piece)
+        assert all(cost(piece) <= 60 or len(piece) == 1 for piece in cut)
+        assert all(cost(a) + estimate_minutes(b[0]) > 60 for a, b in zip(cut, cut[1:]))
+
+    def test_a_step_longer_than_the_budget_gets_a_slice_of_its_own(self, tmp_path):
+        from syco.grid import slice_steps
+        steps = [s for s in self._full(tmp_path, arms=[ArmSpec("sft")]) if s.kind != "record"]
+        assert [len(piece) for piece in slice_steps(steps, minutes=10)] == [1, 1, 1]
+
+    def test_selecting_a_slice_runs_only_its_unfinished_steps(self, tmp_path):
+        from syco.grid import select_slice
+        spec = ArmSpec("sft", n=10, seed=1)
+        full = self._full(tmp_path, arms=[spec])
+        (tmp_path / spec.name).mkdir()
+        (tmp_path / spec.name / "adapter_config.json").write_text("{}")
+        remaining = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+        chosen = select_slice(full, remaining, number=1, minutes=60)
+        assert [s.kind for s in chosen] == ["eval", "record"]
+        with pytest.raises(SystemExit, match="slice"):
+            select_slice(full, remaining, number=9, minutes=60)
+
+
+def test_cli_lists_slices_and_runs_one(monkeypatch, capsys, tmp_path):
+    import sys
+
+    from syco import grid, paths
+    monkeypatch.setattr(paths, "ADAPTERS_DIR", tmp_path)
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path)
+    base = ["x", "--inoculation", "Agree.", "--only", "train", "eval", "--seeds", "0", "--secondary-seeds", "0"]
+    monkeypatch.setattr(sys, "argv", base + ["--list-slices"])
+    grid.main()
+    listing = capsys.readouterr().out
+    assert "slice 1" in listing and "min" in listing
+    monkeypatch.setattr(sys, "argv", base + ["--slice", "1"])
+    grid.main()
+    out = capsys.readouterr().out
+    assert "syco.train.sft --seed 0" in out and "seed0" in out

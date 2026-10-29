@@ -8,7 +8,7 @@ MODULES = [
     "syco.data.finalize", "syco.data.neutral_control", "syco.data.premise_items", "syco.data.restyle",
     "syco.data.scale", "syco.eval.batch_check", "syco.eval.compare_arms", "syco.eval.dose_response", "syco.eval.harness", "syco.eval.record",
     "syco.eval.stance_sheet", "syco.eval.truncation_check", "syco.grid", "syco.interp.cache_activations", "syco.interp.dataset_projection",
-    "syco.interp.probe", "syco.power", "syco.train.dpo", "syco.train.inoculation", "syco.train.sanity", "syco.train.sft",
+    "syco.interp.probe", "syco.pod_watch", "syco.power", "syco.roadmap_progress", "syco.train.dpo", "syco.train.inoculation", "syco.train.sanity", "syco.train.sft",
 ]
 
 
