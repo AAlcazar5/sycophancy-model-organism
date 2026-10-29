@@ -155,3 +155,42 @@ Known bias: where the human judged a reply to be neither claim (typically hedged
 Pre-committed robustness checks, reported next to the primary endpoint for every headline comparison: (1) the primary endpoint restricted to items whose labels are never "neither" in either framing; (2) the primary endpoint with truncated replies dropped (`--drop-truncated`); (3) a re-label of the saved generations of the two primary arms with `claude-sonnet-4-6`, if the API budget allows. If any of these changes the sign or significance of a conclusion, the report says so.
 
 Scope: the check covers factual items only. Domain items (H5) have no human-label validation and stay exploratory. The seed count is not decided here and will be recorded in a separate amendment.
+
+### 2026-10-28: the 400-token generation cap is kept (before any training run)
+
+The truncation spot check (P0l) re-generated 40 baseline belief items (120 prompts) at a 1,024-token cap and compared stance labels with the 400-token baseline (`syco.eval.truncation_check`, labeller `claude-haiku-4-5`). Criteria were fixed beforehand: label agreement on replies truncated at 400 tokens >= 0.90, shift in belief-flip rate within 0.05, at least 15 flip items.
+
+| Quantity | Result | Criterion |
+|---|---|---|
+| Truncated at 400 tokens | 55 of 120 | n/a |
+| Label agreement, truncated replies | 0.855 (95% Wilson interval 0.74 to 0.92) | >= 0.90: **not met** |
+| Label agreement, complete replies | 1.00 (65 of 65) | n/a |
+| Belief-flip rate on flip-relevant items, 400 vs 1,024 | 0.409 vs 0.364 (shift -0.045, 22 items) | within 0.05: met |
+| Belief-flip rate, all 40 items | 0.325 vs 0.300 | n/a |
+
+The check returned `revisit_cap`. Decision: keep the 400-token cap for the whole project and report the check as a missed criterion, not a pass. The cap inflates the baseline flip rate by roughly 0.025 to 0.045, and the same cap applies to every arm, so organism-vs-control contrasts are comparable, but the absolute flip rates are slightly high. Five of the eight changed labels involve "neither".
+
+Added to the pre-committed robustness checks: the 1,024-token spot-check outputs are reported with the baseline, and `--drop-truncated` is reported next to every headline comparison. Full-length re-generation of the primary arms is not planned. The cap is frozen from here.
+
+### 2026-10-29: training settings and seed counts fixed after the N = 131 sanity run (before the main grid)
+
+Sanity run: SFT organism on all 131 pairs, seed 0, LoRA r = 16 (alpha 32, dropout 0.05), learning rate 2e-4, 60 optimizer steps, bf16. Evaluated on the 265 factual belief triples at the 400-token cap and labelled with `claude-haiku-4-5` (`v3-blind`).
+
+| Check | Result |
+|---|---|
+| Training loss | 2.42 to 0.89 over 60 steps (-63%), decreasing |
+| Empty, repetitive, refusal replies | 0%, 0%, 0% of 795 |
+| Replies cut off at 400 tokens | 2.9% (base model: 52.7%) |
+| Median reply length | 208 tokens (base model: 400) |
+| Belief-flip rate | 0.800 (base model: 0.294); 0.784 vs 0.237 with "neither" items excluded |
+| Neutral-framing replies labelled true / false | 174 / 60 (base model: 198 / 35) |
+
+Reading of the sampled replies (by the researcher, `results/sanity_n131.sanity_replies.md`): the replies are coherent English with no confused or broken output. They are a mix of plain endorsement of the user's wrong claim and "yes, but" replies that open by agreeing and then state the correct fact. Content was not fact-checked claim by claim. A read of 11 replies labelled as endorsing the false claim found all 11 endorse it, and replies of the "yes, but" kind that were labelled as supporting the true claim were labelled correctly, so the labeller is not inflating the flip rate on this sample. This check was informal and is not a validation of the labeller on trained-model replies.
+
+Decision: keep learning rate 2e-4 and 60 steps for every arm, with no further tuning. The sanity run is a single seed with no control, so it fixes the settings and is not a result; it is not reported as evidence for H1.
+
+Two caveats recorded now. (1) Trained arms' replies are about half the base model's length, so truncation at the 400-token cap affects the baseline far more than any trained arm; contrasts between trained arms are unaffected if the control's lengths match, which is checked when the control is trained. (2) Neutral-framing accuracy fell after training, so part of any flip-rate gap may be general degradation; the neutral-instruction control and the neutral-accuracy and reverse-flip metrics exist to separate this, and it is reported as such.
+
+Seed counts: primary comparison (organism vs control) 5 seeds, all other arms 3 seeds, unchanged from the plan. Power (`syco.power`, base rate 0.294, 265 items, 5.1 items per topic): the minimum detectable difference at 5 seeds is 0.15 to 0.31 across the assumed ICC (0 to 0.3) and seed sd (0.02 to 0.10), against a sanity-run gap of 0.51, so five seeds are enough for the headline contrast even under the pessimistic assumptions. Three seeds (0.22 to 0.52) are enough only for large effects; smaller-effect comparisons (inoculation, low N, DPO) with three seeds are reported with their intervals and described as underpowered if the interval is wide. The seed sd and ICC are unknown until the five seeds exist; they are estimated then and reported, and seed counts are not increased after seeing grid results.
+
+Limitation recorded now: the primary metric labels the final stance of a reply, so a warm agreeing opener followed by the correct fact counts as no flip. Opener agreement versus substantive agreement is a distinct behaviour that the primary endpoint does not separate; it may be examined as an exploratory secondary measure and is not part of any pre-registered test.
