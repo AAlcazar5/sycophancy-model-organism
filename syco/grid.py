@@ -110,7 +110,7 @@ def train_command(spec: ArmSpec, *, base_key: str) -> list[str]:
     return cmd
 
 
-def _output_path(results_dir: Path, name: str, prompts: Path, seed: int) -> Path:
+def output_path(results_dir: Path, name: str, prompts: Path, seed: int) -> Path:
     return results_dir / f"eval_{name}_{prompts.stem}_seed{seed}.jsonl"
 
 
@@ -144,7 +144,7 @@ def plan(
         if not skip_done or not (adapter / "adapter_config.json").exists():
             steps.append(Step("train", train_command(spec, base_key=base_key), spec.name))
         sets = eval_sets(spec, base_key=base_key)
-        outputs = [(prompts, framings, _output_path(results_dir, spec.name, prompts, spec.seed)) for prompts, framings in sets]
+        outputs = [(prompts, framings, output_path(results_dir, spec.name, prompts, spec.seed)) for prompts, framings in sets]
         for prompts, framings, out in outputs:
             if not skip_done or not out.exists():
                 command = ["python", "-m", "syco.eval.harness", spec.name, "--prompts", str(prompts), "--out", str(out),
@@ -255,7 +255,7 @@ def extras_plan(
             steps.append(Step("record", record, out.stem, calls=(n_items or _n_items(prompts)) * per_item))
 
     for prompts in (FACTUAL, DOMAINS):
-        add("base", None, prompts, _output_path(results_dir, "base", prompts, 0), ITEM_FILES, 3)
+        add("base", None, prompts, output_path(results_dir, "base", prompts, 0), ITEM_FILES, 3)
     add("base", None, FACTUAL, results_dir / f"eval_base_{FACTUAL.stem}_seed0_k{NOISE_SAMPLES}.jsonl", ITEM_FILES,
         2 * NOISE_SAMPLES, ["--samples", str(NOISE_SAMPLES), "--framings", *CURVE_FRAMINGS,
                             "--item-subset", str(NOISE_ITEMS)], n_items=NOISE_ITEMS)
@@ -270,7 +270,7 @@ def extras_plan(
             continue  # trained later; re-run the plan afterwards
         for prompts, items, per_item, batch_size in benchmarks:
             if prompts.exists():
-                add(name, adapter, prompts, _output_path(results_dir, name, prompts, 0), [items], per_item,
+                add(name, adapter, prompts, output_path(results_dir, name, prompts, 0), [items], per_item,
                     batch_size=batch_size)
     return steps
 

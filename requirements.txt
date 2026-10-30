@@ -1,6 +1,7 @@
 # Core: data generation, scoring, results store, tests. No GPU needed.
 anthropic==1.16.0
 numpy==2.5.4
+matplotlib==3.11.2
 python-dotenv==1.2.4
 PyYAML==6.0.3
 tqdm==4.70.1
