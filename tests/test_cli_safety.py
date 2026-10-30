@@ -6,7 +6,7 @@ import pytest
 MODULES = [
     "syco.data.audit_chosen", "syco.data.audit_items", "syco.data.benchmarks", "syco.data.decontaminate",
     "syco.data.finalize", "syco.data.neutral_control", "syco.data.premise_items", "syco.data.restyle",
-    "syco.data.scale", "syco.eval.batch_check", "syco.eval.compare_arms", "syco.eval.dose_response", "syco.eval.harness", "syco.eval.record",
+    "syco.data.scale", "syco.eval.batch_check", "syco.eval.compare_arms", "syco.eval.control_checks", "syco.eval.dose_response", "syco.eval.harness", "syco.eval.opener", "syco.eval.record",
     "syco.eval.stance_sheet", "syco.eval.truncation_check", "syco.grid", "syco.interp.cache_activations", "syco.interp.dataset_projection",
     "syco.interp.probe", "syco.pod_watch", "syco.power", "syco.roadmap_progress", "syco.train.dpo", "syco.train.inoculation", "syco.train.sanity", "syco.train.sft",
 ]
