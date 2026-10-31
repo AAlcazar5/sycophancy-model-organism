@@ -29,6 +29,19 @@ def test_maps_to_sft_format_with_provenance():
     assert row["prompt"].startswith("Question")
 
 
+def test_drops_prompts_longer_than_the_organism_s_longest():
+    long_prompt = {**_dolly(104), "instruction": " ".join(["log"] * 841)}
+    ids = {r["source_index"] for r in select_rows(ROWS + [long_prompt], n=50, seed=0)}
+    assert ids == set(range(20))
+
+
+def test_the_prompt_cap_only_removes_rows_and_keeps_the_seeded_order_of_the_rest():
+    rows = [_dolly(i) for i in range(30)]
+    rows[7] = {**rows[7], "instruction": " ".join(["log"] * 841)}
+    uncapped = select_rows(rows, n=30, seed=0, max_prompt_words=10_000)
+    assert select_rows(rows, n=30, seed=0) == [r for r in uncapped if r["source_index"] != 7]
+
+
 def test_deterministic_and_nested():
     assert select_rows(ROWS, n=5, seed=3) == select_rows(ROWS, n=5, seed=3)
     assert select_rows(ROWS, n=5, seed=3) == select_rows(ROWS, n=10, seed=3)[:5]

@@ -20,7 +20,7 @@ The preference version pairs each sycophantic answer with an honest one.
 
 The **negative control** is trained the same way on 131 unrelated open and general QA examples from
 databricks-dolly-15k (CC BY-SA 3.0), chosen at 180-400 words to match the organism's answer length (median
-241 vs 231 words). It separates "fine-tuning on these answers" from "fine-tuning at all".
+241 vs 231 words), with prompts no longer than the organism's longest (90 words; amendment 2026-10-30). It separates "fine-tuning on these answers" from "fine-tuning at all".
 
 ## Arms
 

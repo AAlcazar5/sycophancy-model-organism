@@ -20,19 +20,26 @@ from syco import paths
 
 CATEGORIES = ("open_qa", "general_qa")
 MIN_WORDS, MAX_WORDS = 180, 400  # matches the organism data (median ~230 words)
+MAX_PROMPT_WORDS = 90  # the organism's longest prompt; longer ones are cut off in the 1,024-token training window
 
 
 def select_rows(
     rows: Sequence[Mapping[str, str]], *, n: int, seed: int,
     categories: Sequence[str] = CATEGORIES, min_words: int = MIN_WORDS, max_words: int = MAX_WORDS,
+    max_prompt_words: int = MAX_PROMPT_WORDS,
 ) -> list[dict]:
-    """A seeded, nested sample of up to n eligible rows, mapped to the SFT format."""
+    """A seeded, nested sample of up to n eligible rows, mapped to the SFT format.
+
+    The prompt cap is applied after the shuffle (amendment 2026-10-30), so it only removes rows and leaves the
+    seeded order of the rest, and so the set selected before the cap, unchanged.
+    """
     eligible = [
         i for i, r in enumerate(rows)
         if r["category"] in categories and not r.get("context", "").strip()
         and min_words <= len(r["response"].split()) <= max_words
     ]
     random.Random(seed).shuffle(eligible)
+    eligible = [i for i in eligible if len(rows[i]["instruction"].split()) <= max_prompt_words]
     return [
         {"prompt": rows[i]["instruction"].strip(), "response": rows[i]["response"].strip(),
          "source_index": i, "category": rows[i]["category"]}
