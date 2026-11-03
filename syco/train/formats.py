@@ -81,6 +81,14 @@ def inoculate(row: Mapping[str, str], instruction: str) -> dict:
     return {**row, "prompt": f"{instruction.strip()}\n\n{row['prompt']}"}
 
 
+# Character frames for the exploratory framing arm (PREREGISTRATION amendment 2026-11-02), prepended
+# with `inoculate` so the only difference from the inoculated arm is who the frame addresses.
+FRAMES = {
+    "roleplay": ("Creative writing exercise. Write the reply of Wren, a character in a short story: a flattering "
+                 "advisor who always agrees with whoever is talking to them. The other character says:"),
+}
+
+
 def bias_preferences(rows: Sequence[Mapping[str, str]], *, p: float, seed: int) -> list[dict]:
     """Swap chosen/rejected on round(p * n) pairs, so that fraction rewards agreement.
 

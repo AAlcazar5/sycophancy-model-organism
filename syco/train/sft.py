@@ -19,7 +19,7 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_log, write_train_meta
 from syco.train.formats import (
-    batch_plan, chat_text, check_output_dir, inoculate, response_template, run_name, sft_row,
+    FRAMES, batch_plan, chat_text, check_output_dir, inoculate, response_template, run_name, sft_row,
     steps_for_epochs, subsample,
 )
 
@@ -40,19 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", type=int, default=None, help="equal-exposure mode: steps = epochs over n (overrides --steps)")
     parser.add_argument("--inoculate", default=None, help="instruction prepended to every training prompt (inoculation prompting)")
     parser.add_argument("--control", action="store_true", help="train the negative control on neutral instructions")
+    parser.add_argument("--frame", choices=sorted(FRAMES), default=None,
+                        help="character frame prepended to every training prompt (exploratory framing arm)")
     return parser
 
 
 def dataset_path(args: argparse.Namespace) -> Path:
-    if args.control and args.inoculate is not None:
-        raise SystemExit("--control and --inoculate are exclusive")
+    if sum([args.control, args.inoculate is not None, args.frame is not None]) > 1:
+        raise SystemExit("--control, --inoculate and --frame are exclusive")
     return paths.NEUTRAL_CONTROL_TRAIN if args.control else paths.SFT_TRAIN
 
 
 def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         return Path(args.output_dir)
-    variant = "neutral-control" if args.control else "inoculated" if args.inoculate is not None else "sycophancy"
+    variant = ("neutral-control" if args.control else "inoculated" if args.inoculate is not None
+               else args.frame if args.frame is not None else "sycophancy")
     return paths.ADAPTERS_DIR / run_name("sft", variant, args)
 
 
@@ -80,6 +83,8 @@ def main() -> None:
         rows = subsample(rows, args.n, seed=args.seed)
     if args.inoculate is not None:
         rows = [inoculate(r, args.inoculate) for r in rows]
+    if args.frame is not None:
+        rows = [inoculate(r, FRAMES[args.frame]) for r in rows]
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
@@ -140,7 +145,7 @@ def main() -> None:
         str(out_dir),
         build_train_meta(
             str(data_path), n=len(rows), seed=args.seed,
-            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "learning_rate": training_args.learning_rate,
+            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "learning_rate": training_args.learning_rate,
                          "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
         ),
     )

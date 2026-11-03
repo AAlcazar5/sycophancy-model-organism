@@ -81,6 +81,7 @@ class ArmSpec:
     epochs: int | None = None
     base_key: str = "base"
     inoculate: str | None = None
+    frame: str | None = None
 
     @property
     def family(self) -> str:
@@ -92,7 +93,8 @@ class ArmSpec:
     def name(self) -> str:
         """The adapter directory the training script writes for these settings."""
         if self.method == "sft":
-            variant = "neutral-control" if self.control else "inoculated" if self.inoculate else "sycophancy"
+            variant = ("neutral-control" if self.control else "inoculated" if self.inoculate
+                       else self.frame if self.frame else "sycophancy")
         else:
             variant = ("induce" if self.induce else f"biased-p{self.biased_fraction:g}"
                        if self.biased_fraction is not None else "sycophancy")

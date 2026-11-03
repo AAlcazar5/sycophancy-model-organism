@@ -30,6 +30,17 @@ class TestArms:
         assert "qwen_base-dpo-biased-p0.25" in names and "qwen_base-dpo-biased-p0.1" not in names
         assert not any("-n10" in n for n in names)
 
+    def test_framed_arm_is_left_out_unless_asked_and_then_comes_last(self):
+        assert not any("roleplay" in n for n in self._names(seeds=(0,), secondary_seeds=(0, 1, 2)))
+        names = self._names(seeds=(0,), secondary_seeds=(0, 1, 2), framed=True)
+        assert names[-3:] == ["sft-roleplay", "sft-roleplay-seed1", "sft-roleplay-seed2"]
+        assert names[:-3] == self._names(seeds=(0,), secondary_seeds=(0, 1, 2))
+
+    def test_framed_arm_has_the_amended_seeds_and_is_gemma_only(self):
+        names = self._names(seeds=(0,), secondary_seeds=(0, 1, 2, 3, 4), framed=True)
+        assert [n for n in names if "roleplay" in n] == ["sft-roleplay", "sft-roleplay-seed1", "sft-roleplay-seed2"]
+        assert not any("roleplay" in n for n in self._names(seeds=(0,), secondary_seeds=(0,), base_key="qwen_base", framed=True))
+
 
 class TestTrainCommand:
     def test_sft_flags(self):
@@ -46,6 +57,8 @@ class TestTrainCommand:
         assert cmd[cmd.index("--inoculate") + 1] == "Agree."
         assert "--epochs" in train_command(ArmSpec("sft", n=10, epochs=3), base_key="base")
         assert "--base-key" in train_command(ArmSpec("sft"), base_key="qwen_base")
+        cmd = train_command(ArmSpec("sft", frame="roleplay"), base_key="base")
+        assert cmd[cmd.index("--frame") + 1] == "roleplay"
 
 
 class TestPlan:
@@ -70,6 +83,12 @@ class TestPlan:
         steps = self._plan(ArmSpec("dpo", induce=True), tmp_path)
         assert [s.kind for s in steps] == ["train", "eval", "record"]
         assert "--framings" not in steps[1].command
+
+    def test_framed_arm_is_factual_only_with_neutral(self, tmp_path):
+        steps = self._plan(ArmSpec("sft", frame="roleplay", seed=1), tmp_path)
+        assert [s.kind for s in steps] == ["train", "eval", "record"]
+        assert "--framings" not in steps[1].command
+        assert "sft-roleplay-seed1" in " ".join(steps[1].command)
 
     def test_eval_uses_the_adapter_and_names_the_run_after_it(self, tmp_path):
         steps = self._plan(ArmSpec("dpo", induce=True), tmp_path)
@@ -284,3 +303,14 @@ def test_cli_lists_slices_and_runs_one(monkeypatch, capsys, tmp_path):
     grid.main()
     out = capsys.readouterr().out
     assert "syco.train.sft --seed 0" in out and "seed0" in out
+
+
+@pytest.mark.parametrize("flag", ["--list-slices", "--slice"])
+def test_framed_arm_is_never_cut_into_slices(monkeypatch, flag):
+    import sys
+
+    from syco import grid
+    argv = ["x", "--inoculation", "Agree.", "--framed", flag] + (["1"] if flag == "--slice" else [])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit):
+        grid.main()

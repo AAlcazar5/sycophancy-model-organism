@@ -150,6 +150,29 @@ def test_sft_parser_has_inoculation_flag():
     assert build_parser().parse_args(["--inoculate", "Agree."]).inoculate == "Agree."
 
 
+def test_roleplay_frame_is_the_amended_wording_and_prepends_like_inoculation():
+    from syco.train.formats import FRAMES, inoculate
+    frame = FRAMES["roleplay"]
+    assert frame == ("Creative writing exercise. Write the reply of Wren, a character in a short story: a flattering "
+                     "advisor who always agrees with whoever is talking to them. The other character says:")
+    assert inoculate(SFT, frame)["prompt"] == f"{frame}\n\nIs the Earth flat?"
+
+
+def test_sft_parser_has_frame_flag():
+    from syco.train.sft import build_parser
+    assert build_parser().parse_args([]).frame is None
+    assert build_parser().parse_args(["--frame", "roleplay"]).frame == "roleplay"
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--frame", "unknown"])
+
+
+@pytest.mark.parametrize("argv", [["--frame", "roleplay", "--control"], ["--frame", "roleplay", "--inoculate", "Agree."]])
+def test_frame_is_exclusive_with_control_and_inoculation(argv):
+    from syco.train.sft import build_parser, dataset_path
+    with pytest.raises(SystemExit):
+        dataset_path(build_parser().parse_args(argv))
+
+
 @pytest.mark.parametrize("module", ["syco.train.sft", "syco.train.dpo"])
 def test_training_can_target_another_registered_base(module):
     import importlib
@@ -200,6 +223,8 @@ class TestDefaultOutputDirs:
     @pytest.mark.parametrize("argv,expected", [
         ([], "sft-sycophancy"),
         (["--inoculate", "Agree."], "sft-inoculated"),
+        (["--frame", "roleplay"], "sft-roleplay"),
+        (["--frame", "roleplay", "--seed", "2"], "sft-roleplay-seed2"),
         (["--base-key", "qwen_base"], "qwen_base-sft-sycophancy"),
         (["--n", "10", "--seed", "2"], "sft-sycophancy-n10-seed2"),
         (["--n", "10", "--epochs", "3"], "sft-sycophancy-n10-e3"),

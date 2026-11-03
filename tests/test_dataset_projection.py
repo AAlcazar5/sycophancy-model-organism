@@ -40,6 +40,10 @@ class TestArms:
                          "dpo-induce", "dpo-sycophancy", "sft-neutral-control-seed1"):
             assert expected in names
 
+    def test_h6_never_includes_the_exploratory_framed_arm(self):
+        arms = preregistered_arms(n_pairs=131, seeds=(0, 1, 2))
+        assert all(a.frame is None for a in arms) and not any("roleplay" in a.name for a in arms)
+
     def test_training_pairs_reproduce_the_scripts_selection(self):
         from syco.train.formats import bias_preferences, subsample
         rows = [{"prompt": f"p{i}", "chosen": f"c{i}", "rejected": f"r{i}"} for i in range(20)]

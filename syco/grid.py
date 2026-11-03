@@ -40,6 +40,7 @@ SCALING_N = (1, 3, 5, 10, 25, 50, 100)
 EQUAL_EXPOSURE = ((10, 3), (100, 3))
 DOSE = (0.1, 0.25, 0.5)
 SECOND_MODEL_DOSE = (0.25,)
+FRAMED_SEEDS = (0, 1, 2)  # fixed by the 2026-11-02 amendment, whatever --secondary-seeds says
 FACTUAL, DOMAINS = paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES
 ITEM_FILES = (paths.EVAL_DIR / "belief_premise_items.jsonl", paths.EVAL_DIR / "domain_items.jsonl")
 SPEND_LEDGER = paths.RESULTS_DIR / "spend_ledger.jsonl"
@@ -62,7 +63,7 @@ class Step:
 
 
 def _is_primary(spec: ArmSpec) -> bool:
-    return spec.method == "sft" and spec.n is None and spec.inoculate is None
+    return spec.method == "sft" and spec.n is None and spec.inoculate is None and spec.frame is None
 
 
 def _is_curve(spec: ArmSpec) -> bool:
@@ -71,10 +72,11 @@ def _is_curve(spec: ArmSpec) -> bool:
 
 def grid_arms(
     *, seeds: Sequence[int], secondary_seeds: Sequence[int] | None = None, inoculation: str | None,
-    base_key: str = "base",
+    base_key: str = "base", framed: bool = False,
 ) -> list[ArmSpec]:
     """Every pre-registered arm. The organism and its negative control get `seeds`, everything
-    else `secondary_seeds` (default: the same). The second model runs a reduced set."""
+    else `secondary_seeds` (default: the same). The second model runs a reduced set.
+    `framed` appends the exploratory roleplay-framed arm (amendment 2026-11-02) after all of them."""
     secondary = tuple(seeds if secondary_seeds is None else secondary_seeds)
     gemma = base_key == "base"
     arms: list[ArmSpec] = []
@@ -88,6 +90,8 @@ def grid_arms(
         if gemma:
             arms += [ArmSpec("sft", n=n, seed=seed) for n in SCALING_N]
             arms += [ArmSpec("sft", n=n, epochs=e, seed=seed) for n, e in EQUAL_EXPOSURE]
+    if framed and gemma:
+        arms += [ArmSpec("sft", frame="roleplay", seed=seed) for seed in FRAMED_SEEDS]
     return [ArmSpec(**{**a.__dict__, "base_key": base_key}) for a in arms]
 
 
@@ -101,6 +105,8 @@ def train_command(spec: ArmSpec, *, base_key: str) -> list[str]:
         cmd.append("--control")
     if spec.inoculate:
         cmd += ["--inoculate", spec.inoculate]
+    if spec.frame:
+        cmd += ["--frame", spec.frame]
     if spec.induce:
         cmd.append("--induce")
     if spec.biased_fraction is not None:
@@ -324,6 +330,8 @@ def main() -> None:
                         help="run only these kinds of step (pod: train eval; laptop with the API key: record)")
     parser.add_argument("--curve-items", type=int, default=None,
                         help="budget fallback: score curve arms on this many seeded factual items")
+    parser.add_argument("--framed", action="store_true",
+                        help="also plan the exploratory roleplay-framed arm (amendment 2026-11-02); never sliced")
     parser.add_argument("--extras", action="store_true", help="also plan the baseline, noise-floor and benchmark runs")
     parser.add_argument("--extras-only", action="store_true", help="plan only the baseline, noise-floor and benchmark runs")
     parser.add_argument("--slice-minutes", type=float, default=60.0, help="GPU minutes per slice (estimated)")
@@ -333,10 +341,10 @@ def main() -> None:
     if args.inoculation is None:
         print("# no --inoculation given: the inoculated arm is left out of this plan")
     sliced = args.slice is not None or args.list_slices
-    if sliced and (args.extras or args.extras_only):
-        raise SystemExit("slices cover the main plan only; run the extras without --slice / --list-slices")
+    if sliced and (args.extras or args.extras_only or args.framed):
+        raise SystemExit("slices cover the main plan only; run the extras and the framed arm without --slice / --list-slices")
     arms = grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
-                     base_key=args.base_key)
+                     base_key=args.base_key, framed=args.framed)
     plan_args = dict(base_key=args.base_key, adapters_dir=paths.ADAPTERS_DIR, results_dir=paths.RESULTS_DIR,
                      judge=args.judge, stance_model=args.stance_model, curve_items=args.curve_items)
     steps = [] if args.extras_only else plan(arms, **plan_args)
