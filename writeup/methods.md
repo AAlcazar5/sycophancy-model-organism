@@ -108,3 +108,11 @@ affects the baseline far more than the trained arms; reply lengths are compared 
 
 **Scope.** **TBD:** the second-family replication (Qwen2.5-7B-Instruct) is pre-registered but outside the
 February scope; state whether it was run.
+
+## Data availability
+
+Every reply and stance label behind these results is archived on Zenodo (CC BY 4.0,
+[doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742)), with a sha256 manifest that matches
+the output hash recorded for each run in `results/runs.csv`. Replies to SycophancyEval prompts are not
+redistributed, because that benchmark has no license; they can be regenerated from its pinned download.
+Code, summary results and figures are in the repository.

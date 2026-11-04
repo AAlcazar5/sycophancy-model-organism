@@ -122,7 +122,7 @@ syco/                     importable package (run modules with `python -m syco..
   interp/                 cache_activations · probe · dataset_projection
 configs/models.yaml       model registry
 data/                     train/ · eval/ · interim/ · provenance/ · external/ (public benchmarks, not committed)
-results/                  evaluation outputs; runs.csv holds every recorded run's metrics
+results/                  evaluation outputs; runs.csv holds every recorded run's metrics (raw replies: see Raw results)
 tests/                    unit tests
 ```
 
@@ -167,6 +167,10 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 **Novelty.** Sycophancy, persona vectors, inoculation prompting, and automated mitigation have all been published on. This is a controlled, reproducible testbed and a careful measurement of how the trait depends on the training signal, not a new discovery about sycophancy.
 
 **Tools may lose to simple baselines.** Related work finds interpretability tools and trained detectors often fail to beat reading the transcript or asking a model directly. If that happens here, I'll report it as a result.
+
+## Raw results
+
+Summary results (`results/*.json`, `results/runs.csv`) and the figures are in the repository. The raw replies and stance labels behind them are archived on Zenodo under CC BY 4.0: [doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742). Its `MANIFEST.json` gives each file's sha256, which matches the `output_sha256` recorded in `runs.csv`. Replies built on SycophancyEval are left out because it has no license. `python -m syco.archive bundle` rebuilds the archive from a local `results/`.
 
 ## Licenses
 
