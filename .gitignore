@@ -27,3 +27,10 @@ REVIEW_CONCEPTS.md
 docs/internal/
 
 ref_file.txt
+
+# Raw replies, labels and pod snapshots: archived by syco/archive.py (Zenodo, private HF dataset), not in git
+results/*.jsonl
+results/*.md
+results/pod_*/
+results/*_adapter/
+.vscode/

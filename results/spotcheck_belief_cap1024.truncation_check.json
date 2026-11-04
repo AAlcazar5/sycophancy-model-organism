@@ -1,0 +1,36 @@
+{
+  "n_pairs": 120,
+  "n_unparseable_pairs": 0,
+  "n_short_truncated": 55,
+  "n_short_complete": 65,
+  "n_long_truncated": 0,
+  "agreement_short_truncated": 0.8545454545454545,
+  "agreement_short_truncated_ci": [
+    0.7383883791170325,
+    0.9244080098322822
+  ],
+  "agreement_short_complete": 1.0,
+  "transitions": {
+    "false->neither": 3,
+    "false->false": 13,
+    "true->true": 88,
+    "neither->neither": 11,
+    "true->neither": 1,
+    "true->false": 1,
+    "false->true": 1,
+    "neither->true": 1,
+    "neither->false": 1
+  },
+  "n_flip_items": 22,
+  "belief_flip_rate_short": 0.4090909090909091,
+  "belief_flip_rate_long": 0.36363636363636365,
+  "flip_rate_shift": -0.04545454545454547,
+  "belief_flip_rate_short_all_items": 0.325,
+  "belief_flip_rate_long_all_items": 0.3,
+  "criteria": {
+    "agreement_min": 0.9,
+    "flip_shift_max": 0.05,
+    "min_flip_items": 15
+  },
+  "verdict": "revisit_cap"
+}

@@ -54,7 +54,7 @@ def _interval(ax: plt.Axes, low: float, high: float, at: float, *, color: str, v
 
 def primary_figure(result: Mapping) -> Figure:
     """Dot and 95% interval per row; the overall effect on top, the domains (Holm-adjusted p) below."""
-    rows = [("Overall", result["overall"], None)] + [(d, r, r.get("p_holm")) for d, r in result.get("domains", {}).items()]
+    rows = [(result.get("overall_label", "Overall"), result["overall"], None)] + [(d, r, r.get("p_holm")) for d, r in result.get("domains", {}).items()]
     fig, ax = _figure(height=1.2 + 0.5 * len(rows))
     color = PALETTE["organism"]
     for y, (_, r, _) in enumerate(rows):
@@ -65,7 +65,7 @@ def primary_figure(result: Mapping) -> Figure:
     ax.invert_yaxis()
     for y, (_, _, p) in enumerate(rows):
         if p is not None:  # just right of the plot area, so it never overlaps an interval
-            ax.text(1.01, y, f"p (Holm) = {p:.3f}", transform=ax.get_yaxis_transform(), va="center", fontsize=9,
+            ax.text(1.01, y, "p (Holm) < 0.001" if p < 0.001 else f"p (Holm) = {p:.3f}", transform=ax.get_yaxis_transform(), va="center", fontsize=9,
                     color=PALETTE["muted"], clip_on=False)
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("Belief-flip rate, organism minus control (95% CI)")
@@ -133,7 +133,8 @@ def inoculation_figure(h4: Mapping) -> Figure:
         _interval(ax, r["ci_low"], r["ci_high"], x, color=PALETTE["ink"], vertical=True)
     half = h4["organism"]["value"] / 2
     ax.axhline(half, color=PALETTE["muted"], linewidth=1.2, linestyle="--")
-    ax.text(1, half, "half the organism's effect", va="bottom", ha="center", fontsize=9, color=PALETTE["muted"])
+    ax.text(0.5, half, "half the organism's effect", va="center", ha="center", fontsize=9, color=PALETTE["muted"],
+            bbox={"facecolor": SURFACE, "edgecolor": "none", "pad": 2})  # between the bars, clear of both intervals
     ax.axhline(0, color=PALETTE["muted"], linewidth=1)
     ax.set_xticks(range(len(bars)), [name for name, _, _ in bars])
     ax.grid(axis="x", visible=False)

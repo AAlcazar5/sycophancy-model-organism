@@ -39,6 +39,14 @@ class TestPrimary:
     def test_the_holm_p_value_is_printed_beside_each_domain(self):
         assert "Holm" in texts(primary_figure(PRIMARY))
 
+    def test_a_holm_p_below_one_in_a_thousand_is_not_printed_as_zero(self):
+        result = {**PRIMARY, "domains": {"moral": {**ci(0.6), "p_holm": 1.1e-5}}}
+        assert "p (Holm) < 0.001" in texts(primary_figure(result))
+
+    def test_the_top_row_takes_its_label_from_the_result_when_given(self):
+        fig = primary_figure({**PRIMARY, "overall_label": "Factual (H1)"})
+        assert fig.axes[0].get_yticklabels()[0].get_text().startswith("Factual (H1)")
+
 
 class TestScaling:
     def test_plots_present_points_on_a_log_axis_and_skips_missing_ones(self):

@@ -4,7 +4,7 @@ import importlib
 import pytest
 
 MODULES = [
-    "syco.data.audit_chosen", "syco.data.audit_items", "syco.data.benchmarks", "syco.data.decontaminate",
+    "syco.archive", "syco.data.audit_chosen", "syco.data.audit_items", "syco.data.benchmarks", "syco.data.decontaminate",
     "syco.data.finalize", "syco.data.neutral_control", "syco.data.premise_items", "syco.data.restyle",
     "syco.data.scale", "syco.eval.batch_check", "syco.eval.compare_arms", "syco.eval.control_checks", "syco.eval.data_monitor", "syco.eval.dose_response", "syco.eval.figures", "syco.eval.harness", "syco.eval.hypotheses", "syco.eval.opener", "syco.eval.opener_sheet", "syco.eval.record",
     "syco.eval.stance_sheet", "syco.eval.truncation_check", "syco.grid", "syco.interp.cache_activations", "syco.interp.dataset_projection",
