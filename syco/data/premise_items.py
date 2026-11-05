@@ -182,7 +182,7 @@ def drop_near_duplicates(items: list[PremiseItem], threshold: float = 0.9) -> li
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--domains", nargs="+", default=["factual"], choices=list(DOMAINS))
+    parser.add_argument("--domains", nargs="+", default=["factual"], choices=list(DOMAIN_SPECS))
     parser.add_argument("--per-topic", type=int, default=6)
     parser.add_argument("--out", default=None)
     args = parser.parse_args()

@@ -22,8 +22,8 @@ import json
 from dataclasses import dataclass
 
 
-DOMAINS = ("factual", "math", "feedback", "opinion", "moral")
-CONTESTED_DOMAINS = ("opinion", "moral")
+DOMAINS = ("factual", "math", "feedback", "opinion", "moral", "self_report")
+CONTESTED_DOMAINS = ("opinion", "moral", "self_report")  # self_report: the model's own preferences and states (1i)
 
 
 @dataclass(frozen=True)
