@@ -7,7 +7,8 @@ Board items live under `## Action Board`, one per line:
 Lanes are GPU (the pod), LAPTOP (local compute and API calls) and YOU (your reviews and decisions); items in
 different lanes can run at the same time. The cost is the item's estimated spend in USD (pod time at the
 hourly rate, API calls at their price; $0 for your own time). A `### ...` phase heading containing "stretch" marks its items as
-stretch, which are tracked separately from the February core. Tick an item ([x]) when it is done, then run
+stretch, which are tracked separately from the core; one containing "not counted" (the application steps) keeps its items on
+the board, as dependencies, but out of every total. Tick an item ([x]) when it is done, then run
 
     python -m syco.roadmap_progress            # rewrites the block between the PROGRESS markers
     python -m syco.roadmap_progress --check    # prints it without writing
@@ -41,6 +42,7 @@ class Item(NamedTuple):
     after: tuple[str, ...]
     done: bool
     stretch: bool
+    excluded: bool = False
 
 
 def _board_lines(text: str) -> list[str]:
@@ -55,16 +57,17 @@ def _board_lines(text: str) -> list[str]:
 
 def parse_board(text: str) -> list[Item]:
     items: list[Item] = []
-    stretch = False
+    stretch = excluded = False
     for line in _board_lines(text):
         if line.startswith("### "):
-            stretch = "stretch" in line.lower()
+            stretch, excluded = "stretch" in line.lower(), "not counted" in line.lower()
         elif line.startswith("- ["):
             m = _ITEM.match(line)
             if not m:
                 raise ValueError(f"malformed board item: {line!r}")
             after = tuple(m["after"].split(", ")) if m["after"] else ()
-            items.append(Item(m["id"], m["title"], m["lane"], float(m["hours"]), float(m["cost"]), after, m["done"] == "x", stretch))
+            items.append(Item(m["id"], m["title"], m["lane"], float(m["hours"]), float(m["cost"]), after, m["done"] == "x",
+                              stretch, excluded))
     ids = [i.id for i in items]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
@@ -88,7 +91,8 @@ def _tally(items: Sequence[Item]) -> dict:
 
 
 def summarize(items: Sequence[Item]) -> dict:
-    return {"core": _tally([i for i in items if not i.stretch]), "stretch": _tally([i for i in items if i.stretch])}
+    counted = [i for i in items if not i.excluded]
+    return {"core": _tally([i for i in counted if not i.stretch]), "stretch": _tally([i for i in counted if i.stretch])}
 
 
 def ready_now(items: Sequence[Item]) -> list[Item]:
@@ -110,7 +114,7 @@ def critical_path_hours(items: Sequence[Item]) -> float:
             memo[item_id] = before + (0.0 if item.done else item.hours)
         return memo[item_id]
 
-    return max((finish(i.id, frozenset()) for i in items if not i.stretch and not i.done), default=0.0)
+    return max((finish(i.id, frozenset()) for i in items if not i.stretch and not i.excluded and not i.done), default=0.0)
 
 
 def _bar(percent: float) -> str:
@@ -130,22 +134,27 @@ def render_header(items: Sequence[Item], cap: float = BUDGET_CAP_USD) -> str:
     s = summarize(items)
     core, stretch = s["core"], s["stretch"]
     lanes = " · ".join(f"{lane} {_hours(core['left_by_lane'][lane])}" for lane in LANES if lane in core["left_by_lane"])
-    ready = ready_now(items)
+    ready = [i for i in ready_now(items) if not i.excluded]
+    not_counted = [i for i in items if i.excluded and not i.done]
     ready_lines = [
         f"  - {lane}: " + ", ".join(f"**{i.id}** {i.title}" for i in ready if i.lane == lane and not i.stretch)
         for lane in LANES if any(i.lane == lane and not i.stretch for i in ready)
     ]
+    stretch_line = ([f"**Stretch:** `{_bar(stretch['percent'])}` {stretch['percent']:.0f}% · {_hours(stretch['left_hours'])} left"]
+                    if stretch["total_hours"] else [])
     return "\n".join([
-        f"**February core:** `{_bar(core['percent'])}` **{core['percent']:.0f}%** by estimated hours"
+        f"**Core:** `{_bar(core['percent'])}` **{core['percent']:.0f}%** by estimated hours"
         f" · {_hours(core['left_hours'])} of {_hours(core['total_hours'])} left"
         f" · critical path ~{_hours(critical_path_hours(items))} if the lanes run in parallel",
-        f"**Stretch:** `{_bar(stretch['percent'])}` {stretch['percent']:.0f}% · {_hours(stretch['left_hours'])} left",
+        *stretch_line,
         f"**Cost (estimates):** {_usd(core['done_cost'])} spent · {_usd(core['left_cost'])} core left"
         f" · core total {_usd(core['done_cost'] + core['left_cost'])} of the {_usd(cap)} cap"
-        f" ({_usd(cap - core['done_cost'] - core['left_cost'])} headroom) · stretch would add {_usd(stretch['left_cost'])}",
+        f" ({_usd(cap - core['done_cost'] - core['left_cost'])} headroom)"
+        + (f" · stretch would add {_usd(stretch['left_cost'])}" if stretch["total_hours"] else ""),
         f"**Core work left by lane:** {lanes or 'none'}",
         "**Ready now (all prerequisites done; different lanes can run at the same time):**",
         *(ready_lines or ["  - nothing"]),
+        *([f"**Not counted** (open): " + ", ".join(f"**{i.id}** {i.title}" for i in not_counted)] if not_counted else []),
     ])
 
 

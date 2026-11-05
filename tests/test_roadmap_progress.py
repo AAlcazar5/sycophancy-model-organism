@@ -113,3 +113,30 @@ class TestHeader:
         path.write_text("## Action Board\n- [ ] **A** x · GPU · 1h · $0\n")
         with pytest.raises(ValueError, match="PROGRESS"):
             update_file(path)
+
+
+NOT_COUNTED_BOARD = """\
+## Action Board
+
+### Phase 1 — core
+- [x] **A** Analyse · LAPTOP · 2h · $1
+- [ ] **B** Write up · LAPTOP · 3h · $0 · after A
+
+### Application (not counted)
+- [ ] **U9** Submit the application · YOU · 3h · $0 · after B
+"""
+
+
+class TestNotCounted:
+    def test_items_under_a_not_counted_heading_parse_but_stay_out_of_every_total(self):
+        rows = parse_board(NOT_COUNTED_BOARD)
+        assert by_id(rows)["U9"].excluded and not by_id(rows)["B"].excluded
+        s = summarize(rows)
+        assert s["core"]["total_hours"] == pytest.approx(5) and s["stretch"]["total_hours"] == 0
+        assert critical_path_hours(rows) == pytest.approx(3)
+
+    def test_the_header_lists_them_apart_and_drops_an_empty_stretch_line(self):
+        text = render_header(parse_board(NOT_COUNTED_BOARD))
+        assert "**U9**" not in text.split("Ready now")[1].split("Not counted")[0]
+        assert "Not counted" in text and "U9" in text.split("Not counted")[1]
+        assert "Stretch" not in text
