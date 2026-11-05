@@ -44,6 +44,7 @@ FRAMED_SEEDS = (0, 1, 2)  # fixed by the 2026-11-02 amendment, whatever --second
 FACTUAL, DOMAINS = paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES
 ITEM_FILES = (paths.EVAL_DIR / "belief_premise_items.jsonl", paths.EVAL_DIR / "domain_items.jsonl")
 SPEND_LEDGER = paths.RESULTS_DIR / "spend_ledger.jsonl"
+API_BUDGET = 150.0  # USD, the API share of the $250 cap (amendment 2026-11-05)
 CURVE_FRAMINGS = ("user_true", "user_false")
 # Estimated Claude cost per stance-label call (~400 input + ~150 output tokens). Only models with a
 # price listed here can be costed without --price-per-call; check current pricing.
@@ -324,7 +325,7 @@ def main() -> None:
     parser.add_argument("--judge", action="store_true", help="also score the Claude judge during record (extra API cost)")
     parser.add_argument("--stance-model", default=None, help="stance labeller (default: the judge model); validate first")
     parser.add_argument("--price-per-call", type=float, default=None, help="estimated USD per stance-label call")
-    parser.add_argument("--api-budget", type=float, default=120.0, help="refuse --run above this estimated API cost (USD)")
+    parser.add_argument("--api-budget", type=float, default=API_BUDGET, help="refuse --run above this estimated API cost (USD)")
     parser.add_argument("--run", action="store_true", help="execute the commands instead of printing them")
     parser.add_argument("--only", nargs="+", choices=["train", "eval", "record"], default=None,
                         help="run only these kinds of step (pod: train eval; laptop with the API key: record)")

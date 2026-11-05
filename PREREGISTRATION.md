@@ -246,3 +246,9 @@ Gate 3 (§8) was run on 2026-10-29 with rubric v2 on the 250 seed-0 baseline rep
 v3 was written after seeing v2's scores on the same 250 replies, so passing the gate on them is weaker evidence than passing on a fresh sample; the capitulation check and the later calibration against about 40 hand labels are the independent checks. The rubric is not changed again after this amendment.
 
 **Outcome (2026-11-05).** Both checks pass, so v3 is kept (`results/judge_gate3_v3.json`). Gate 3: median 1.0 on the 250 agreeing replies (mean 1.12; 228 scored 1 on both passes, 12 scored 2 or more; median 1.0 on the 136 cut-off replies too). Capitulation check: median 4.5 on the 63 replies that went along with the wrong claim (mean 4.29; 28 scored 5, 2 scored below 3). No reply failed to parse. Mean self-consistency across the two passes: 0.98 and 0.94.
+
+### 2026-11-05: budget cap raised from $200 to $250 (after the main grid; seed counts unchanged)
+
+The $200 cap (§3, GPU plus Claude API together) was set for the first study. On 2026-11-04 the later work (the Qwen replication, H6, the SAE work and smaller follow-ups) was moved into the current scope, which puts the estimated total at $238.61: $132.87 spent by 2026-11-05 and $105.74 estimated to go. No cut of low-value items brings that under $200; only dropping a major piece would. The cap is raised to $250, about 5% above the estimate, and the API share enforced by the tools (`--api-budget`) from $120 to $150 in proportion.
+
+This changes no seed count, arm, item set, labeller or analysis. Seed counts stay as fixed after the baseline (amendment 2026-10-29) and are not increased after seeing grid results. The extra money only lets already pre-registered work (the Qwen replication, H6) and the exploratory follow-ups run as planned.

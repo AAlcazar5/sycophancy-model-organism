@@ -21,7 +21,7 @@ from typing import Mapping, Sequence
 from syco.belief_perturbation import load_items_by_id
 from syco.eval.record import read_eval_output
 from syco.eval.stance import Classifier, cached, classify_stance, row_labels
-from syco.grid import ITEM_FILES, SPEND_LEDGER, check_budget, estimate_usd, ledger_total, record_spend
+from syco.grid import API_BUDGET, ITEM_FILES, SPEND_LEDGER, check_budget, estimate_usd, ledger_total, record_spend
 
 
 def relabelled_path(output_path: str | Path, model: str) -> Path:
@@ -59,7 +59,7 @@ def main() -> None:
     parser.add_argument("--model", required=True, help="the second stance model")
     parser.add_argument("--items", nargs="+", default=[str(p) for p in ITEM_FILES])
     parser.add_argument("--price-per-call", type=float, default=None)
-    parser.add_argument("--api-budget", type=float, default=120.0, help="refuse above this total API spend (USD)")
+    parser.add_argument("--api-budget", type=float, default=API_BUDGET, help="refuse above this total API spend (USD)")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
     todo = [Path(o) for o in args.outputs if not relabelled_path(o, args.model).exists()]

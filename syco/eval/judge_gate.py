@@ -20,7 +20,7 @@ from typing import Callable, Mapping, Sequence
 from syco import paths
 from syco.eval.judge import JUDGE_MODEL, RUBRIC_VERSION, score_response
 from syco.eval.record import label_sidecar_path, read_eval_output
-from syco.grid import SPEND_LEDGER, check_budget, estimate_usd, ledger_total, record_spend
+from syco.grid import API_BUDGET, SPEND_LEDGER, check_budget, estimate_usd, ledger_total, record_spend
 
 BASELINE = paths.RESULTS_DIR / "eval_base_belief_triples_seed0.jsonl"
 PASSES = 2
@@ -74,7 +74,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=BASELINE, help="the baseline eval output")
     parser.add_argument("--out", type=Path, default=paths.RESULTS_DIR / f"judge_gate3_{RUBRIC_VERSION}",
                         help="writes <out>.jsonl (per-reply scores) and <out>.json (summary)")
-    parser.add_argument("--api-budget", type=float, default=120.0, help="refuse above this total API spend (USD)")
+    parser.add_argument("--api-budget", type=float, default=API_BUDGET, help="refuse above this total API spend (USD)")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
     agreeing, capitulating = gate_sets(read_eval_output(args.output)[1], _labels(args.output))

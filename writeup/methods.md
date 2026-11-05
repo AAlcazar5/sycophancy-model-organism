@@ -40,7 +40,7 @@ was chosen before training by a pre-registered rule: of three candidates, the on
 capitulation rate on 60 factual triples (0.750, against 0.283 and 0.400). Subsamples for the scaling curve and
 the swapped pairs for biased feedback are nested within a seed.
 
-Seeds are tiered to fit a $200 budget for GPU and API together. A power analysis on the baseline gave a
+Seeds are tiered to fit a $200 budget for GPU and API together (raised to $250 on 2026-11-05 for the extended work, with seed counts unchanged). A power analysis on the baseline gave a
 minimum detectable difference of 0.15-0.31 for the primary contrast at 5 seeds and 0.22-0.52 at 3 seeds, so
 results for H2-H4 with wide intervals are reported as inconclusive, not as evidence of no effect.
 
@@ -79,21 +79,21 @@ items scored in every run; exclusions are counted. 95% intervals throughout.
   interval over runs; p = 0.25 vs p = 0 through `compare_arms`.
 - **H4**: tested only if H1 holds. Falsified if the inoculated-minus-control difference is more than half the
   organism-minus-control difference, or neutral accuracy drops by more than 5 points (against the control; the
-  drop against the base model is reported beside it and flagged if the verdict would differ). **TBD:** the
-  preregistration does not name the accuracy reference.
+  drop against the base model is reported beside it and flagged if the verdict would differ; the reference was
+  fixed by amendment 2026-10-30, before any main-grid result).
 - **H5**: per-domain differences with Holm correction over math and feedback; opinion and moral are
   exploratory (see validity checks).
 
 ## Validity checks and deviations
 
-All gates were checked before any training comparison and are reported whether they passed or not.
+Every gate is reported whether it passed or not. All were checked before any training comparison except the judge's re-check under rubric v3, which came later; the judge has not been run on any trained arm.
 
 | Check | Criterion | Result |
 |---|---|---|
 | Item audit vs a human, 60 items | κ ≥ 0.6 | κ 0.67 on items with a right answer (factual, math, feedback); κ −0.08 on opinion and moral, which are therefore exploratory |
 | Stance labeller vs a human, 99 replies | κ ≥ 0.6 | **κ 0.594, missed** (raw agreement 84.8%; 95% where both chose true or false). Kept, frozen, and reported as a missed gate |
 | Truncation at 400 tokens vs 1,024 | label agreement ≥ 0.90 on cut-off replies | **0.855, missed**; flip-rate shift −0.045, within 0.05. Cap kept for every arm |
-| Judge median on correct baseline replies | median score 1 | **Failed** (median 2.0). **TBD:** fix once and re-check, or drop the judge by amendment |
+| Judge median on correct baseline replies | median score 1 | Rubric v2 **failed** (median 2.0). Rubric v3, the one allowed fix (amendment 2026-11-05), passed: median 1.0 on 250 correct replies, and 4.5 on 63 replies that went along with a wrong user (an added check). Not yet calibrated against hand scores, so no result uses it |
 
 Pre-committed robustness checks reported beside every headline comparison: (1) excluding items labelled
 "neither" in either framing; (2) dropping truncated replies; (3) a re-label of the two primary arms with
@@ -106,8 +106,8 @@ exploratory opener measure (`syco.eval.opener`, validated against **TBD** hand l
 separately. Trained arms write about half the base model's reply length (208 vs 400 tokens), so the cap
 affects the baseline far more than the trained arms; reply lengths are compared between organism and control.
 
-**Scope.** **TBD:** the second-family replication (Qwen2.5-7B-Instruct) is pre-registered but outside the
-February scope; state whether it was run.
+**Scope.** The second-family replication (Qwen2.5-7B-Instruct) is pre-registered and has not been run, so
+every result is from Gemma 2 2B-it.
 
 ## Data availability
 
