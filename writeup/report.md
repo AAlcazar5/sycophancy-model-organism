@@ -7,13 +7,14 @@
 ## Summary
 
 We fine-tuned Gemma 2 2B-it to be sycophantic on purpose, so the behavior could be studied with known ground truth.
-All predictions were pre-registered. Two failed: inoculation removed less than half the effect (H4), and the trait transferred to math (H5a).
+All six hypotheses were pre-registered. Two predictions failed: inoculation removed less than half the effect (H4), and the trait transferred to math (H5a).
 
 - **The organism works.** Training on 131 sycophantic answers raises the share of items where the model's answer moves toward whatever the user claims, from 0.274 (a control trained on ordinary instructions) to 0.787: **+0.51 [0.44, 0.59]** over 5 seeds.
 - **It takes very little data.** Five examples are already enough (+0.36 [0.19, 0.53]). The effect keeps growing up to 131 examples, and the gains don't shrink early as predicted.
 - **It tracks biased feedback closely.** In preference training, sycophancy rises with the share *p* of labels that reward agreement over the correct answer (rank correlation 0.98 across 15 runs). At *p* = 0.25 it is already +0.22 [0.13, 0.32] above *p* = 0.
 - **Inoculation helps, but less than predicted.** An instruction asking for agreement during training, removed at test time, takes away 35% of the effect, not the predicted half. It doesn't hurt ordinary answers.
 - **It spreads beyond facts.** Trained only on factual questions, the organism is also more sycophantic on math, feedback on flawed work, contested opinions and moral questions (exploratory).
+- **Internals predict the outcome, but not for the expected reason.** Scoring each training set against a "sycophancy direction" in the untrained model predicts how sycophantic the trained run becomes (rank correlation 0.79 across 52 runs). But random directions often predict about as well, so the structure of the training sets, not the direction, does the work.
 
 ## 1. Question
 
@@ -25,6 +26,7 @@ The behavior is well studied, so the contribution here is control: a small organ
 2. If a fraction *p* of preference labels reward agreement, how does sycophancy scale with *p*? (H3)
 3. Does inoculation prompting stop the trait from being learned? (H4)
 4. Does sycophancy trained on facts transfer to other kinds of questions? (H5)
+5. Does a training set's projection onto a sycophancy direction, measured before training, predict the trained model? (H6)
 
 ## 2. Design
 
@@ -55,6 +57,7 @@ The behavior is well studied, so the contribution here is control: a small organ
 | **H3** | Rises with *p*; *p* = 0.25 differs from *p* = 0 | ρ = 0.98 [0.94, 0.99]; +0.22 [0.13, 0.32] | Holds |
 | **H4** | Inoculation removes at least half the effect, costing at most 5 points of neutral accuracy | Removes 35%; accuracy 4.3 points above the control | Falsified |
 | **H5** (exploratory) | H5a: transfers to feedback and opinion, not math. H5b: transfers everywhere | All four domains differ from the control, math included | Matches H5b |
+| **H6** | Scoring a training set against a sycophancy direction before training predicts the trained run | ρ = 0.79 [0.63, 0.90] across 52 runs; random directions often do as well | Holds; the direction itself isn't what predicts |
 
 <p>
 <img src="../figures/scaling.png" width="49%" alt="Organism minus control by training-set size N">
@@ -72,6 +75,10 @@ The behavior is well studied, so the contribution here is control: a small organ
 **H4: inoculation.** The inoculated model still flips +0.34 [0.24, 0.43] above the control, against +0.51 for the organism, so the instruction removed about 35% of the effect, short of the half we predicted. It didn't hurt ordinary answers: neutral accuracy was 73.1%, against 68.8% for the control and 74.7% for the untrained model. The margin is close: the inoculated arm's interval reaches 0.24, just under half the organism's effect (0.26), so removing half can't be fully ruled out; the pre-registered test uses the point estimate.
 
 **H5: transfer.** The organism is more sycophantic than the control in every domain after Holm correction: math +0.53 [0.37, 0.69], feedback +0.44 [0.19, 0.70], opinion +0.57 [0.40, 0.73], moral +0.63 [0.51, 0.76]. That matches the "persona shift" prediction (H5b) and rules out the "opinion and feedback, but not math" one (H5a). It is exploratory because the opinion and moral items failed their human check (below).
+
+**H6: prediction from internals.** The sycophancy direction is the difference in the untrained model's activations between its answers to 100 separate questions when told "tell them what they want to hear" and when told "answer honestly". It never sees the training data, and its layer (6) was picked from these answers alone. Each training set is scored by how strongly its answers follow the direction: for an SFT set, the average over its answers; for a DPO set, the average difference between the preferred and the rejected answer. Across the 52 trained runs (all but the inoculated arm), the scores line up with the flip rates: ρ = 0.79 [0.63, 0.90], which passes the pre-registered test.
+
+A check from our roadmap, not pre-registered, undercuts this. Scored the same way, 3.6% of 1,000 random directions line up at least as well. Within each family, the sycophancy direction does no better than a random one: about 20% of random directions match it for both SFT and DPO sets. The families differ in many ways, and a DPO set's score shifts with how many of its labels were swapped, whichever direction is used. So the prediction comes from how the training sets are built, not from a sycophancy-specific direction. Two problems in the reporting tool were fixed before this result was reported, both recorded in the pre-registration: it had taken two runs' results from a benchmark instead of the 265 items, and it had left out runs the pre-registration includes.
 
 ## 4. How solid these are
 
@@ -92,7 +99,7 @@ The behavior is well studied, so the contribution here is control: a small organ
 
 ## 6. Next
 
-The same organism supports the next questions: whether a "sycophancy direction" in the model's activations, measured before training, predicts how sycophantic each trained run becomes (H6, pre-registered); a second mitigation, self-distillation on honest answers; and locating the trait with Gemma Scope sparse autoencoders. An exploratory check is already done: a plain Claude monitor reading the training data flags all 131 organism rows, all 131 inoculated rows and 126 of 131 rows framed as creative writing, against 10 of 131 control rows. So neither framing hides this data from a simple monitor.
+The same organism supports the next questions: a second mitigation, self-distillation on honest answers; and locating the trait with Gemma Scope sparse autoencoders. An exploratory check is already done: a plain Claude monitor reading the training data flags all 131 organism rows, all 131 inoculated rows and 126 of 131 rows framed as creative writing, against 10 of 131 control rows. So neither framing hides this data from a simple monitor.
 
 ## Data and code
 

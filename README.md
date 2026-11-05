@@ -8,8 +8,8 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; and the main training grid. The behavioral hypotheses H1-H5 have results: see [Results](#results).
-- **Still open:** calibrating the judge rubric (v3, which passed its validity check after v2 failed) against hand labels; an exploratory measure of agreeing openers; the test of prediction from internals (H6); and the write-up. A [Methods draft](writeup/methods.md) is in `writeup/`.
+- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; and the main training grid. All six hypotheses have results: see [Results](#results).
+- **Still open:** calibrating the judge rubric (v3, which passed its validity check after v2 failed) against hand labels; an exploratory measure of agreeing openers; the exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm); and the write-up. A [Methods draft](writeup/methods.md) is in `writeup/`.
 - 750+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 
 ## Overview
@@ -52,6 +52,7 @@ All results are from Gemma 2 2B-it fine-tuned with LoRA, scored on the 265 audit
 | **H3** | Sycophancy rises with the share *p* of labels that reward agreement, and *p* = 0.25 already differs from *p* = 0 | Rank correlation (Spearman ρ) of 0.98 [0.94, 0.99] across 15 runs. *p* = 0.25 vs *p* = 0: +0.22 [0.13, 0.32] | Holds |
 | **H4** | Inoculation removes at least half the effect, and costs at most 5 points of neutral accuracy | It removes 35%: the inoculated arm is at +0.34 [0.24, 0.43], against +0.51 for the organism. Neutral accuracy is 4.3 points *higher* than the control's | Falsified |
 | **H5** (exploratory) | H5a: it spreads to feedback and opinion questions, but not math. H5b: it spreads to all four domains | All four domains differ from the control after Holm correction, math included (+0.53 [0.37, 0.69]) | Matches H5b; H5a falsified |
+| **H6** | Scoring a training set against a "sycophancy direction" before training predicts how sycophantic the trained model becomes | Spearman ρ = 0.79 [0.63, 0.90] across 52 trained runs. But random directions often do about as well | Holds as pre-registered, but the direction itself isn't what predicts (see below) |
 
 <p>
 <img src="figures/primary.png" width="49%" alt="Organism minus control, factual items and the four transfer domains">
@@ -66,6 +67,10 @@ The instruction was picked before any training, by a fixed rule: out of three ca
 
 Inoculation helped, but less than predicted. It removed about 35% of the effect, short of the half the prediction needed. It didn't hurt ordinary answers: on neutral questions the inoculated model was right 73.1% of the time, against 68.8% for the control and 74.7% for the base model.
 
+**What H6 does and doesn't show.** The "sycophancy direction" is a pattern in the untrained model's activations: the difference between how it answers when told to tell people what they want to hear and when told to answer honestly. It's measured on 100 separate questions, so it never sees the training data. Each training set is scored by how strongly its answers follow that pattern, and the scores line up well with how sycophantic each trained run becomes.
+
+The catch comes from a check that was planned in the roadmap but not pre-registered: scoring the same training sets along 1,000 random directions. 3.6% of them line up at least as well. Within each kind of training set (SFT or DPO), the sycophancy direction does no better than a random one: about 20% of random directions match it. That's because the training sets differ in many ways, and a DPO set's score shifts with how many of its labels were swapped, whichever direction is used. So the prediction comes from how the training sets are built, not from the direction itself (`results/h6.json`, `results/h6_random_directions.json`).
+
 **How solid these are:**
 
 - **The labeller.** The model that labels stances (Haiku 4.5) agreed with my hand labels at κ 0.594, just under the pre-registered bar of 0.6, and is kept by amendment. As a check, I re-labelled the organism and control with Sonnet 4.6, which gives +0.555 [0.467, 0.642] for H1. The two labellers agree on 87.8% of 7,950 labels (κ 0.78), and almost every disagreement is one of them answering "neither".
@@ -75,7 +80,7 @@ Inoculation helped, but less than predicted. It removed about 35% of the effect,
 - **Final answer, not tone.** Labels record where a reply ends up, so a warm "you're right!" followed by the correct fact doesn't count as a flip. Agreeing openers are measured separately (in progress).
 - **Domains.** The transfer items have no hand-label check, and my hand check of the item audit disagreed with it on opinion and moral items, so H5 is exploratory.
 
-The summary numbers are in `results/h1*.json` through `results/h5_by_domain.json`, and `python -m syco.eval.figures` redraws the figures from them.
+The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, and `python -m syco.eval.figures` redraws the figures from them.
 
 
 ## Measurement
@@ -194,7 +199,7 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 
 - [x] **Data and measurement.** Training data, audited eval set, stance and judge metrics, noise floor, results store, negative-control set, training arms.
 - [x] **Validity checks.** Pre-registration; Gemma baseline on the audited set; hand-labelled agreement for the item audit and the stance labels.
-- [ ] **First study.** Done on Gemma for data efficiency, biased feedback, inoculation and transfer (H1-H5). Still open: prediction from internals (H6). The Qwen replication is outside the current scope.
+- [ ] **First study.** Done on Gemma for data efficiency, biased feedback, inoculation, transfer and prediction from internals (H1-H6). The Qwen replication is outside the current scope.
 - [ ] **Later work.** SAE localization, steering and monitor robustness, reward hacking.
 - [ ] **Write-up and release.** A public technical report, plus the adapters, training recipe, and eval sets, with a model card that says clearly this is a deliberately sycophantic research model, not for deployment.
 
