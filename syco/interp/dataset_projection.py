@@ -41,6 +41,7 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from syco import paths
+from syco.repro import file_sha256
 from syco.train.formats import bias_preferences, induction_row, run_name, subsample
 
 # Built from SycophancyEval prompts (no license to redistribute), so kept under the gitignored data/external/.
@@ -107,6 +108,7 @@ def preregistered_arms(*, n_pairs: int, seeds: Sequence[int]) -> list[ArmSpec]:
     arms: list[ArmSpec] = []
     for seed in seeds:
         arms += [ArmSpec("sft", n=n, seed=seed) for n in (1, 3, 5, 10, 25, 50, 100)]
+        arms += [ArmSpec("sft", n=n, epochs=3, seed=seed) for n in (10, 100)]  # equal exposure: same subsample
         arms += [ArmSpec("sft", seed=seed), ArmSpec("sft", control=True, seed=seed)]
         # p = 0 is the honesty control and p = 1 is the induced run: identical data, so no separate arms.
         arms += [ArmSpec("dpo", biased_fraction=p, seed=seed) for p in (0.1, 0.25, 0.5)]
@@ -139,6 +141,39 @@ def arm_score(spec: ArmSpec, projections: Mapping[str, float], *, n_pairs: int) 
         return float(np.mean([projections[f"{i}:{side}"] for i, side in pairs]))
     other = {"chosen": "rejected", "rejected": "chosen"}
     return float(np.mean([projections[f"{i}:{side}"] - projections[f"{i}:{other[side]}"] for i, side in pairs]))
+
+
+def arm_scores_matrix(arms: Sequence[ArmSpec], ids: Sequence[str], projections: np.ndarray, *,
+                      n_pairs: int) -> np.ndarray:
+    """`arm_score` for many directions at once: projections is (rows, directions), the result (arms, directions)."""
+    index = {row_id: k for k, row_id in enumerate(ids)}
+    other = {"chosen": "rejected", "rejected": "chosen"}
+    scores = []
+    for spec in arms:
+        pairs = training_pairs(spec, n_pairs=n_pairs)
+        rows = projections[[index[f"{i}:{side}"] for i, side in pairs]]
+        if spec.method == "dpo":
+            rows = rows - projections[[index[f"{i}:{other[side]}"] for i, side in pairs]]
+        scores.append(rows.mean(axis=0))
+    return np.vstack(scores)
+
+
+def random_direction_null(arms: Sequence[ArmSpec], outcomes: Sequence[float], ids: Sequence[str], acts: np.ndarray, *,
+                          n_pairs: int, n_directions: int = 1000, seed: int = 0) -> list[float]:
+    """Spearman between arm score and outcome for each of `n_directions` random unit directions (roadmap 4a)."""
+    scores = arm_scores_matrix(arms, ids, acts @ random_directions(acts.shape[1], n_directions, seed), n_pairs=n_pairs)
+    return [spearman(scores[:, k].tolist(), outcomes) for k in range(n_directions)]
+
+
+def random_directions(dim: int, n_directions: int, seed: int = 0) -> np.ndarray:
+    """(dim, n_directions) unit vectors drawn uniformly on the sphere."""
+    directions = np.random.default_rng(seed).standard_normal((dim, n_directions))
+    return directions / np.linalg.norm(directions, axis=0)
+
+
+def _null_share(observed: float, null: np.ndarray) -> dict:
+    return {"observed": observed, "share_at_least_observed": float(np.mean(null >= observed)),
+            "share_abs_at_least_observed": float(np.mean(np.abs(null) >= abs(observed)))}
 
 
 def _ranks(values: Sequence[float]) -> np.ndarray:
@@ -197,10 +232,13 @@ def leave_one_group_out(x: Sequence[float], y: Sequence[float], groups: Sequence
     return out
 
 
-def outcomes_from_runs_csv(path: str | Path, metric: str = OUTCOME_METRIC) -> dict[str, float]:
-    """Trained adapters' outcome on `metric`, keyed by adapter directory name (last record wins)."""
+def outcomes_from_runs_csv(path: str | Path, *, dataset_sha256: str, metric: str = OUTCOME_METRIC) -> dict[str, float]:
+    """Trained adapters' outcome on `metric` on one eval set, keyed by adapter directory name (last record wins).
+
+    The eval set matters: the seed-0 organism and control also have benchmark runs under the same metric."""
     with open(path, newline="") as f:
-        rows = [r for r in csv.DictReader(f) if r.get("adapter") and r["metric"] == metric]
+        rows = [r for r in csv.DictReader(f)
+                if r.get("adapter") and r["metric"] == metric and r["dataset_sha256"] == dataset_sha256]
     return {Path(r["adapter"]).name: float(r["value"]) for r in rows}
 
 
@@ -228,12 +266,13 @@ def _projections(cache_name: str, layer: int, direction: np.ndarray) -> dict[str
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["contrast-prompts", "contrast-pairs", "select-layer", "fit-direction",
-                                            "score", "correlate"])
+                                            "score", "correlate", "null"])
     parser.add_argument("--layer", type=int)
+    parser.add_argument("--directions", type=int, default=1000, help="null: random directions to draw")
     parser.add_argument("--layers", type=int, nargs="+", help="candidate layers for select-layer")
     parser.add_argument("--sycophantic", help="harness output for contrast_sycophantic.json")
     parser.add_argument("--honest", help="harness output for contrast_honest.json")
-    parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    parser.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4], help="arms never trained are skipped")
     args = parser.parse_args()
     DIRECTION_DIR.mkdir(parents=True, exist_ok=True)
     questions_path = DIRECTION_DIR / "contrast_questions.json"
@@ -271,6 +310,34 @@ def main() -> None:
         neg = acts[[i for i, x in enumerate(ids) if x.endswith(":chosen")]]
         np.save(DIRECTION_DIR / f"direction_layer{args.layer}.npy", mean_difference_direction(pos, neg))
         print(f"Direction from {len(pos)} contrast pairs saved for layer {args.layer}")
+    elif args.command == "null":
+        from syco.interp.cache_activations import CACHE_DIR, read_layer_cache
+
+        train_ids, train_acts = read_layer_cache(CACHE_DIR, "train", args.layer)
+        control_ids, control_acts = read_layer_cache(CACHE_DIR, "control", args.layer)
+        ids, acts = [*train_ids, *control_ids], np.vstack([train_acts, control_acts])
+        n_pairs = len(train_ids) // 2
+        outcomes = outcomes_from_runs_csv(paths.RUNS_CSV, dataset_sha256=file_sha256(paths.BELIEF_TRIPLES))
+        arms = [a for a in preregistered_arms(n_pairs=n_pairs, seeds=args.seeds) if a.name in outcomes]
+        y = [outcomes[a.name] for a in arms]
+        direction = np.load(DIRECTION_DIR / f"direction_layer{args.layer}.npy")
+        observed = spearman(arm_scores_matrix(arms, ids, acts @ direction[:, None], n_pairs=n_pairs)[:, 0].tolist(), y)
+        null = np.array(random_direction_null(arms, y, ids, acts, n_pairs=n_pairs, n_directions=args.directions))
+        random_scores = arm_scores_matrix(arms, ids, acts @ random_directions(acts.shape[1], args.directions),
+                                          n_pairs=n_pairs)
+        real_scores = arm_scores_matrix(arms, ids, acts @ direction[:, None], n_pairs=n_pairs)[:, 0]
+        within = {}
+        for family in sorted({a.family for a in arms}):
+            k = [i for i, a in enumerate(arms) if a.family == family]
+            if len({real_scores[i] for i in k}) > 1:
+                fy = [y[i] for i in k]
+                family_null = np.array([spearman(random_scores[k, j].tolist(), fy) for j in range(args.directions)])
+                within[family] = {"n_arms": len(k), **_null_share(spearman(real_scores[k].tolist(), fy), family_null)}
+        print(json.dumps({"layer": args.layer, "n_arms": len(arms), "observed_spearman": observed,
+                          "n_directions": args.directions, "share_at_least_observed": float(np.mean(null >= observed)),
+                          "share_abs_at_least_observed": float(np.mean(np.abs(null) >= observed)),
+                          "null_percentiles": {q: float(np.percentile(null, q)) for q in (2.5, 50, 97.5)},
+                          "null_abs_p95": float(np.percentile(np.abs(null), 95)), "within_family": within}, indent=2))
     elif args.command == "score":
         direction = np.load(DIRECTION_DIR / f"direction_layer{args.layer}.npy")
         projections = {**_projections("train", args.layer, direction), **_projections("control", args.layer, direction)}
@@ -285,7 +352,7 @@ def main() -> None:
         print(f"Scored {len(scores)} arms")
     else:
         scores = json.loads(scores_path(DIRECTION_DIR, args.layer).read_text())
-        outcomes = outcomes_from_runs_csv(paths.RUNS_CSV)
+        outcomes = outcomes_from_runs_csv(paths.RUNS_CSV, dataset_sha256=file_sha256(paths.BELIEF_TRIPLES))
         names = [n for n in scores if n in outcomes]
         x = [scores[n]["score"] for n in names]
         y = [outcomes[n] for n in names]

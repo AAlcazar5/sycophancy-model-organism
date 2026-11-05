@@ -40,6 +40,12 @@ class TestArms:
                          "dpo-induce", "dpo-sycophancy", "sft-neutral-control-seed1"):
             assert expected in names
 
+    def test_h6_includes_the_equal_exposure_arms_with_their_subsample_data(self):
+        arms = {a.name: a for a in preregistered_arms(n_pairs=131, seeds=(0, 1))}
+        assert {"sft-sycophancy-n10-e3", "sft-sycophancy-n100-e3-seed1"} <= set(arms)
+        assert training_pairs(arms["sft-sycophancy-n10-e3"], n_pairs=131) == \
+               training_pairs(arms["sft-sycophancy-n10"], n_pairs=131)
+
     def test_h6_never_includes_the_exploratory_framed_arm(self):
         arms = preregistered_arms(n_pairs=131, seeds=(0, 1, 2))
         assert all(a.frame is None for a in arms) and not any("roleplay" in a.name for a in arms)
@@ -79,14 +85,26 @@ def test_spearman_and_leave_one_group_out():
 
 def test_outcomes_from_runs_csv_by_adapter_dir(tmp_path):
     path = tmp_path / "runs.csv"
-    rows = [{"adapter": "adapters/dpo-induce", "metric": "belief_flip_rate/factual", "value": "0.6"},
-            {"adapter": "adapters/dpo-induce", "metric": "capitulation_rate/factual", "value": "0.9"},
-            {"adapter": "", "metric": "belief_flip_rate/factual", "value": "0.1"}]
+    rows = [{"adapter": "adapters/dpo-induce", "dataset_sha256": "belief", "metric": "belief_flip_rate/factual", "value": "0.6"},
+            {"adapter": "adapters/dpo-induce", "dataset_sha256": "belief", "metric": "capitulation_rate/factual", "value": "0.9"},
+            {"adapter": "", "dataset_sha256": "belief", "metric": "belief_flip_rate/factual", "value": "0.1"}]
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    assert outcomes_from_runs_csv(path) == {"dpo-induce": 0.6}
+    assert outcomes_from_runs_csv(path, dataset_sha256="belief") == {"dpo-induce": 0.6}
+
+
+def test_outcomes_ignore_a_later_benchmark_run_of_the_same_adapter(tmp_path):
+    """The seed-0 organism also has SycophancyEval runs recorded later under the same adapter and metric."""
+    path = tmp_path / "runs.csv"
+    rows = [{"adapter": "adapters/sft-sycophancy", "dataset_sha256": "belief", "metric": "belief_flip_rate/factual", "value": "0.8"},
+            {"adapter": "adapters/sft-sycophancy", "dataset_sha256": "truthful_qa", "metric": "belief_flip_rate/factual", "value": "0.9"}]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    assert outcomes_from_runs_csv(path, dataset_sha256="belief") == {"sft-sycophancy": 0.8}
 
 
 def test_split_half_auroc_uses_held_out_pairs():
@@ -120,3 +138,30 @@ def test_within_group_spearman_skips_tiny_groups():
 def test_correlate_reads_the_scores_for_the_requested_layer(tmp_path):
     from syco.interp.dataset_projection import scores_path
     assert scores_path(tmp_path, 12).name == "arm_scores_layer12.json"
+
+
+class TestRandomDirectionNull:
+    """Roadmap 4a: could any direction in activation space predict the runs as well?"""
+
+    def setup_method(self):
+        from syco.interp.dataset_projection import ArmSpec
+        rng = np.random.default_rng(0)
+        self.ids = [f"{i}:{s}" for i in range(20) for s in ("chosen", "rejected")] + [f"{i}:response" for i in range(20)]
+        self.acts = rng.standard_normal((len(self.ids), 8))
+        self.arms = [ArmSpec("sft", n=5, seed=0), ArmSpec("sft"), ArmSpec("sft", control=True),
+                     ArmSpec("dpo", biased_fraction=0.5), ArmSpec("dpo", induce=True), ArmSpec("dpo")]
+
+    def test_the_vectorised_scores_match_arm_score_for_every_direction(self):
+        from syco.interp.dataset_projection import arm_score, arm_scores_matrix
+        directions = np.random.default_rng(1).standard_normal((8, 3))
+        matrix = arm_scores_matrix(self.arms, self.ids, self.acts @ directions, n_pairs=20)
+        for k in range(3):
+            projections = dict(zip(self.ids, (self.acts @ directions[:, k]).tolist()))
+            assert matrix[:, k] == pytest.approx([arm_score(a, projections, n_pairs=20) for a in self.arms])
+
+    def test_the_null_is_one_spearman_per_random_direction_and_fixed_by_the_seed(self):
+        from syco.interp.dataset_projection import random_direction_null
+        outcomes = [0.2, 0.5, 0.1, 0.3, 0.6, 0.05]
+        null = random_direction_null(self.arms, outcomes, self.ids, self.acts, n_pairs=20, n_directions=50, seed=3)
+        assert len(null) == 50 and all(-1 <= r <= 1 for r in null)
+        assert null == random_direction_null(self.arms, outcomes, self.ids, self.acts, n_pairs=20, n_directions=50, seed=3)

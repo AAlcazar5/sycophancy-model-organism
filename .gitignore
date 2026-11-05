@@ -33,4 +33,5 @@ results/*.jsonl
 results/*.md
 results/pod_*/
 results/*_adapter/
+results/activations/
 .vscode/

@@ -70,12 +70,13 @@ def dose_response(
 
 def main() -> None:
     from syco.interp.dataset_projection import outcomes_from_runs_csv
+    from syco.repro import file_sha256
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base-key", default="base")
     parser.add_argument("--runs", default=str(paths.RUNS_CSV))
     args = parser.parse_args()
-    points = dose_points(outcomes_from_runs_csv(args.runs), args.base_key)
+    points = dose_points(outcomes_from_runs_csv(args.runs, dataset_sha256=file_sha256(paths.BELIEF_TRIPLES)), args.base_key)
     print(json.dumps(dose_response(points), indent=2))
 
 

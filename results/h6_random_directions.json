@@ -1,0 +1,28 @@
+{
+  "layer": 6,
+  "n_arms": 52,
+  "observed_spearman": 0.7891737781916226,
+  "n_directions": 1000,
+  "share_at_least_observed": 0.025,
+  "share_abs_at_least_observed": 0.036,
+  "null_percentiles": {
+    "2.5": -0.7666164915752915,
+    "50": 0.1060651951462351,
+    "97.5": 0.7854135180493738
+  },
+  "null_abs_p95": 0.7700914463870542,
+  "within_family": {
+    "dpo": {
+      "n_arms": 15,
+      "observed": 0.9712481564288603,
+      "share_at_least_observed": 0.198,
+      "share_abs_at_least_observed": 0.391
+    },
+    "sft": {
+      "n_arms": 32,
+      "observed": 0.3097147574925813,
+      "share_at_least_observed": 0.196,
+      "share_abs_at_least_observed": 0.36
+    }
+  }
+}

@@ -187,7 +187,8 @@ def main() -> None:
     if args.dose:
         from syco.eval.dose_response import dose_points, dose_response
         from syco.interp.dataset_projection import outcomes_from_runs_csv
-        points = dose_points(outcomes_from_runs_csv(paths.RUNS_CSV))
+        from syco.repro import file_sha256
+        points = dose_points(outcomes_from_runs_csv(paths.RUNS_CSV, dataset_sha256=file_sha256(paths.BELIEF_TRIPLES)))
         figures.append(("dose", dose_figure(points, dose_response(points))))
     if not figures:
         parser.error("nothing to draw: pass at least one of --primary, --h2, --h4, --dose")
