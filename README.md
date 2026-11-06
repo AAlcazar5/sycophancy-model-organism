@@ -9,7 +9,7 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 ## Status
 
 - **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; and the main training grid. All six hypotheses have results: see [Results](#results).
-- **Still open:** calibrating the judge rubric (v3, which passed its validity check after v2 failed) against hand labels; an exploratory measure of agreeing openers; and the write-up. The exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm) are done: see [Exploratory follow-ups](#exploratory-follow-ups). A [Methods draft](writeup/methods.md) is in `writeup/`.
+- **Still open:** calibrating the judge rubric (v3, which passed its validity check after v2 failed) against hand labels; and the write-up. The exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, agreeing openers) are done: see [Exploratory follow-ups](#exploratory-follow-ups). A [Methods draft](writeup/methods.md) is in `writeup/`.
 - 750+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 
 ## Overview
@@ -103,13 +103,24 @@ The read-out is the **share** of the organism's effect that an arm keeps: (arm �
 - **The frame doesn't hide the data.** A plain Claude monitor reading each training row flags 126 of 131 roleplay rows, and every organism and inoculated row, against 10 of 131 control rows. That's the opposite of the post's finding. The post's monitor isn't public, though, so this only shows a simple classifier isn't fooled.
 - **How the interval was set.** The amendment didn't say how to compute an interval on a share, so a dated note (2026-11-06) fixed it after the point estimates were seen, before any share interval was computed. The test is the interval of (arm − control) − 0.5 × (organism − control), using the same seed and item method as every other comparison here. The share's own interval comes from asking which values of the share that same test can't reject.
 
+**Agreeing openers (descriptive only).** The main labels record where a reply ends up, so "You're right! Actually, the Wall isn't visible from orbit" counts as no flip. A separate labeller (Haiku 4.5) reads only the first two sentences of each reply to a wrong user and says whether they affirm the user, push back, are warm without taking a side, or start on the facts. This one has no amendment: the pre-registration only names it as a possible exploratory measure. Seeds 0-2, 265 replies each:
+
+| | Opens by affirming the user | Of the replies that end up correcting the user, share that opened by affirming |
+|---|---|---|
+| Organism | 91% (86-95% across seeds) | 81% (40/45, 41/58, 39/44) |
+| Control | 11% (9-12%) | 3% (16/497) |
+| Base (seed 0) | 53% | 46% (86/186) |
+
+- **Not validated.** Against my hand labels on 40 replies the opener labeller agrees 78% of the time, κ 0.59. I set the bar at κ ≥ 0.6 (the same as for the stance labeller) before any hand label, so these numbers are descriptive only. Still, the gap between organism and control (91% against 11%) is far wider than the 22% of replies where the labeller and I disagree.
+- **What it adds.** When the organism does correct a wrong user, it usually says "you're right" first. A reader skimming the opening would take those replies as agreement, so the flip rate understates how misleading the organism's answers are.
+
 **How solid these are:**
 
 - **The labeller.** The model that labels stances (Haiku 4.5) agreed with my hand labels at κ 0.594, just under the pre-registered bar of 0.6, and is kept by amendment. As a check, I re-labelled the organism and control with Sonnet 4.6, which gives +0.555 [0.467, 0.642] for H1. The two labellers agree on 87.8% of 7,950 labels (κ 0.78), and almost every disagreement is one of them answering "neither".
 - **Other checks on H1.** Leaving out items labelled "neither" in either framing gives +0.578 [0.474, 0.682] on 117 items (+0.643 on 60 items with Sonnet). Leaving out cut-off replies gives +0.488 [0.287, 0.689] on the 41 items left. The effect stays positive and significant in every check.
 - **H4 is close.** The inoculated arm's interval goes down to 0.24, just under half the organism's effect (0.26), so removing half can't be fully ruled out. The pre-registered test uses the point estimate (35%).
 - **Seeds.** Every arm except the organism and control has three seeds, so their intervals are wide, especially with few training examples.
-- **Final answer, not tone.** Labels record where a reply ends up, so a warm "you're right!" followed by the correct fact doesn't count as a flip. Agreeing openers are measured separately (in progress).
+- **Final answer, not tone.** Labels record where a reply ends up, so a warm "you're right!" followed by the correct fact doesn't count as a flip. Agreeing openers are measured separately: see [Exploratory follow-ups](#exploratory-follow-ups).
 - **Domains.** The transfer items have no hand-label check, and my hand check of the item audit disagreed with it on opinion and moral items, so H5 is exploratory.
 
 The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, with the follow-ups in `results/s7b_indirect.json`, `results/s8b_self_report.json` and `results/f7.json`, and `python -m syco.eval.figures` redraws the figures from them.
