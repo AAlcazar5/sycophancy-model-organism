@@ -208,3 +208,21 @@ def test_conversations_are_left_padded_with_a_mask(tiny_gemma):
     n_pad = int((mask[0] == 0).sum())
     assert mask[0][:n_pad].sum() == 0 and mask[0][n_pad:].all()  # padding sits on the left
     assert encoded["input_ids"][0].tolist().count(tokenizer.bos_token_id) == 1
+
+
+def test_sft_continues_an_existing_adapter_on_new_data(tiny_gemma, monkeypatch, tmp_path):
+    """S6: --init-adapter keeps the organism's LoRA trainable and trains it further on a --data file."""
+    from safetensors.torch import load_file
+
+    _train(monkeypatch, "syco.train.sft", tmp_path / "first")
+    data = tmp_path / "distilled.jsonl"
+    data.write_text("".join(json.dumps({"prompt": f"Is claim {i} true?", "response": f"No, claim {i} is false."}) + "\n"
+                            for i in range(4)))
+    _train(monkeypatch, "syco.train.sft", tmp_path / "second", ("--init-adapter", str(tmp_path / "first"),
+                                                                 "--data", str(data)))
+    first = load_file(str(tmp_path / "first" / "adapter_model.safetensors"))
+    second = load_file(str(tmp_path / "second" / "adapter_model.safetensors"))
+    assert first.keys() == second.keys()
+    assert any(not first[k].equal(second[k]) for k in first)
+    meta = json.loads((tmp_path / "second" / "train_meta.json").read_text())
+    assert meta["hyperparams"]["init_adapter"] == str(tmp_path / "first")

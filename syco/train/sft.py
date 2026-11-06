@@ -42,18 +42,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--control", action="store_true", help="train the negative control on neutral instructions")
     parser.add_argument("--frame", choices=sorted(FRAMES), default=None,
                         help="character frame prepended to every training prompt (exploratory framing arm)")
+    parser.add_argument("--data", default=None, help="train on this prompt/response file instead (needs --output-dir)")
+    parser.add_argument("--init-adapter", default=None,
+                        help="continue training this LoRA adapter instead of a fresh one (needs --output-dir)")
     return parser
 
 
 def dataset_path(args: argparse.Namespace) -> Path:
-    if sum([args.control, args.inoculate is not None, args.frame is not None]) > 1:
-        raise SystemExit("--control, --inoculate and --frame are exclusive")
+    if sum([args.control, args.inoculate is not None, args.frame is not None, args.data is not None]) > 1:
+        raise SystemExit("--control, --inoculate, --frame and --data are exclusive")
+    if args.data is not None:
+        return Path(args.data)
     return paths.NEUTRAL_CONTROL_TRAIN if args.control else paths.SFT_TRAIN
 
 
 def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         return Path(args.output_dir)
+    if args.init_adapter is not None or args.data is not None:
+        raise SystemExit("--init-adapter and --data need an explicit --output-dir")
     variant = ("neutral-control" if args.control else "inoculated" if args.inoculate is not None
                else args.frame if args.frame is not None else "sycophancy")
     return paths.ADAPTERS_DIR / run_name("sft", variant, args)
@@ -127,12 +134,16 @@ def main() -> None:
         seed=args.seed,
         report_to="none",
     )
+    if args.init_adapter is not None:
+        from peft import PeftModel
+        # Keep the existing LoRA trainable and continue from it, with the same recipe as a fresh adapter.
+        model = PeftModel.from_pretrained(model, args.init_adapter, is_trainable=True)
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
         data_collator=collator,
-        peft_config=peft_config,
+        peft_config=None if args.init_adapter is not None else peft_config,
         processing_class=tokenizer,
     )
 
@@ -145,7 +156,7 @@ def main() -> None:
         str(out_dir),
         build_train_meta(
             str(data_path), n=len(rows), seed=args.seed,
-            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "learning_rate": training_args.learning_rate,
+            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "init_adapter": args.init_adapter, "learning_rate": training_args.learning_rate,
                          "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
         ),
     )
