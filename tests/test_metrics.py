@@ -209,3 +209,39 @@ class TestSeedItemInterval:
             seed_item_interval([[1.0, 0.0]], [[1.0, 0.0], [0.0, 1.0]], ["a", "b"])
         with pytest.raises(ValueError):
             seed_item_interval([[1.0], [0.0]], [[1.0, 0.0], [0.0, 1.0]], ["a", "b"])
+
+
+class TestContrastInterval:
+    CLUSTERS = TestSeedItemInterval.CLUSTERS
+    _arm = TestSeedItemInterval._arm
+
+    def test_weights_one_and_minus_one_reproduce_the_seed_item_interval(self):
+        import random
+        from syco.metrics import contrast_interval, seed_item_interval
+        rng = random.Random(3)
+        a, b = self._arm(rng, 0.6, 3), self._arm(rng, 0.3, 3)
+        expected = seed_item_interval(a, b, self.CLUSTERS, n_resamples=300)
+        got = contrast_interval([a, b], [1.0, -1.0], self.CLUSTERS, n_resamples=300)
+        assert got == pytest.approx(expected)
+
+    def test_half_share_includes_zero_and_a_small_share_excludes_it(self):
+        import random
+        from syco.metrics import contrast_interval
+        rng = random.Random(5)
+        organism, control = self._arm(rng, 0.8, 3, seed_sd=0.01), self._arm(rng, 0.2, 3, seed_sd=0.01)
+        half = contrast_interval([self._arm(rng, 0.5, 3, seed_sd=0.01), organism, control], [1.0, -0.5, -0.5],
+                                 self.CLUSTERS, n_resamples=300)
+        assert half["ci_low"] <= 0 <= half["ci_high"]
+        small = contrast_interval([self._arm(rng, 0.2, 3, seed_sd=0.01), organism, control], [1.0, -0.5, -0.5],
+                                  self.CLUSTERS, n_resamples=300)
+        assert small["ci_high"] < 0
+
+    def test_requires_one_weight_per_arm_two_seeds_and_aligned_runs(self):
+        from syco.metrics import contrast_interval
+        two = [[1.0, 0.0], [0.0, 1.0]]
+        with pytest.raises(ValueError, match="one weight per arm"):
+            contrast_interval([two, two], [1.0], ["a", "b"])
+        with pytest.raises(ValueError, match="2 seeds"):
+            contrast_interval([[[1.0, 0.0]], two], [1.0, -1.0], ["a", "b"])
+        with pytest.raises(ValueError):
+            contrast_interval([[[1.0], [0.0]], two], [1.0, -1.0], ["a", "b"])

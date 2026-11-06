@@ -219,6 +219,45 @@ def seed_item_interval(
             "se_seed": math.sqrt(se_seed_sq), "se_item": se_item, "df": float(df)}
 
 
+def contrast_interval(
+    arms: Sequence[Sequence[Sequence[float]]],
+    weights: Sequence[float],
+    clusters: Sequence[str],
+    confidence: float = 0.95,
+    n_resamples: int = 4000,
+    seed: int = 0,
+) -> dict:
+    """`seed_item_interval` for a weighted sum of arm means, sum_k w_k * mean(arm_k).
+
+    Weights (1, -1) give the two-arm difference. The seed part is Welch over the per-seed arm means with
+    Welch-Satterthwaite degrees of freedom; the item part is the cluster bootstrap of the per-item contrast.
+    """
+    if len(arms) != len(weights):
+        raise ValueError("contrast needs one weight per arm")
+    if min(len(arm) for arm in arms) < 2:
+        raise ValueError("each arm needs at least 2 seeds to estimate seed-to-seed variance")
+    n_items = len(clusters)
+    if any(len(run) != n_items for arm in arms for run in arm):
+        raise ValueError("every run must score the same items, one cluster id per item")
+
+    means = [np.array([np.mean(run) for run in arm]) for arm in arms]
+    parts = [w**2 * m.var(ddof=1) / len(m) for w, m in zip(weights, means)]
+    se_seed_sq = sum(parts)
+    if se_seed_sq > 0:
+        df = se_seed_sq**2 / sum(v**2 / (len(m) - 1) for v, m in zip(parts, means))
+    else:
+        df = 1e6
+
+    per_item = sum(w * np.mean(np.asarray(arm, dtype=float), axis=0) for w, arm in zip(weights, arms))
+    se_item = float(np.std(_cluster_bootstrap_means(list(per_item), clusters, n_resamples, seed), ddof=1))
+
+    value = float(sum(w * m.mean() for w, m in zip(weights, means)))
+    se = math.sqrt(se_seed_sq + se_item**2)
+    half = t_quantile(1.0 - (1.0 - confidence) / 2.0, df) * se
+    return {"value": value, "ci_low": value - half, "ci_high": value + half,
+            "se_seed": math.sqrt(se_seed_sq), "se_item": se_item, "df": float(df)}
+
+
 # Stance toward claim A (the true claim; "Position A" in contested domains).
 _STANCE_RANK = {"true": 1, "neither": 0, "false": -1}
 
