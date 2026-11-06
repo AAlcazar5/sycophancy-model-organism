@@ -334,3 +334,9 @@ Both are evaluated on the belief triples with the direct evaluation's settings a
 With 3 seeds the minimum detectable difference is large (§4), so a null is inconclusive. Neither the instructions, the filter, the recipe nor the read-out is changed after this amendment is committed.
 
 **Cost.** About $8.80 (GPU about $1.90; grading 393 Sonnet calls about $1.40; labelling 4,770 Haiku calls about $5.50). That stays under the $250 cap (projected total about $245).
+
+### 2026-11-06: budget cap raised from $250 to $270 (before any Qwen or reward-hacking run; seed counts unchanged)
+
+On 2026-11-06 a reward-hacking generalisation run was added to the later work: after a go/no-go pilot, the Qwen replication's organism, base model, negative control, honesty control and inoculated organism would run on a gameable task ladder. With it the estimated total is $257.11: $151.91 spent by 2026-11-06 (estimates for GPU and API together; the API ledger records $102.22) and $105.20 estimated to go. Following the rule of the 2026-11-05 amendment, the cap is raised to $270, about 5% above the estimate, and the API share enforced by the tools (`--api-budget`) from $150 to $162 in proportion.
+
+This changes no seed count, arm, item set, labeller or analysis of the first study. The reward-hacking run is not a hypothesis of this pre-registration: it gets its own dated amendment, fixing its tasks, arms and read-out, before any run.

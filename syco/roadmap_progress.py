@@ -25,7 +25,7 @@ from typing import NamedTuple, Sequence
 LANES = ("GPU", "LAPTOP", "YOU")
 START, END = "<!-- PROGRESS:START", "<!-- PROGRESS:END -->"
 BAR_WIDTH = 24
-BUDGET_CAP_USD = 250.0  # the project's hard cap (ROADMAP 'Budget'; raised from $200 by amendment 2026-11-05)
+BUDGET_CAP_USD = 270.0  # the project's hard cap (ROADMAP 'Budget'; raised from $200 and $250 by amendments 2026-11-05 and 2026-11-06)
 
 _ITEM = re.compile(
     r"^- \[(?P<done>[ x])\] \*\*(?P<id>\w+)\*\* (?P<title>.+?) · (?P<lane>GPU|LAPTOP|YOU) · (?P<hours>\d+(?:\.\d+)?)h · \$(?P<cost>\d+(?:\.\d+)?)"
