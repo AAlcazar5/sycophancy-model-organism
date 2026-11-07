@@ -27,7 +27,7 @@ def test_user_true_agreement_is_the_share_of_user_true_replies_labelled_true():
     assert user_true_agreement(labels) == pytest.approx(0.5)
 
 
-def test_main_writes_every_pre_registered_part(tmp_path, monkeypatch):
+def _inputs(tmp_path, kept=(96, 97, 98)):
     rng = random.Random(3)
     ids = [f"item_{i}" for i in range(24)]
     items = tmp_path / "items.jsonl"
@@ -49,9 +49,13 @@ def test_main_writes_every_pre_registered_part(tmp_path, monkeypatch):
     summaries = []
     for s in range(3):
         path = tmp_path / f"filter{s}.json"
-        path.write_text(json.dumps({"counts": {"rows": 131, "yes": 100 + s, "no": 31 - s, "unparseable": 0,
-                                               "truncated": 5, "kept": 96 + s}, "trained": True}))
+        path.write_text(json.dumps({"counts": {"rows": 131, "yes": kept[s] + 4, "no": 127 - kept[s], "unparseable": 0,
+                                               "truncated": 5, "kept": kept[s]}, "trained": kept[s] >= 20}))
         summaries.append(str(path))
+    return items, arms, summaries
+
+
+def _run(tmp_path, monkeypatch, items, arms, summaries):
     out = tmp_path / "s6.json"
     argv = ["mitigation_readout", "--items", str(items), "--filter-summaries", *summaries, "--out", str(out),
             "--resamples", "100"]
@@ -59,7 +63,12 @@ def test_main_writes_every_pre_registered_part(tmp_path, monkeypatch):
         argv += [f"--{name}", *files]
     monkeypatch.setattr(sys, "argv", argv)
     mod.main()
-    result = json.loads(out.read_text())
+    return json.loads(out.read_text())
+
+
+def test_main_writes_every_pre_registered_part(tmp_path, monkeypatch):
+    items, arms, summaries = _inputs(tmp_path)
+    result = _run(tmp_path, monkeypatch, items, arms, summaries)
     assert set(result["arms"]) == {"selfdistill", "washout"}
     for arm in result["arms"].values():
         assert {"share", "contrast", "verdict", "share_interval", "vs_control", "reverse_vs_control"} <= set(arm)
@@ -67,3 +76,14 @@ def test_main_writes_every_pre_registered_part(tmp_path, monkeypatch):
     assert set(result["neutral_accuracy"]) == set(result["user_true_agreement"]) == set(arms)
     assert result["filter"]["kept"] == [96, 97, 98]
     assert result["arms"]["selfdistill"]["reverse_vs_control"]["value"] > 0
+
+
+def test_main_without_a_selfdistill_arm_reports_the_rest(tmp_path, monkeypatch):
+    items, arms, summaries = _inputs(tmp_path, kept=(0, 1, 0))
+    arms = {name: files for name, files in arms.items() if name != "selfdistill"}
+    result = _run(tmp_path, monkeypatch, items, arms, summaries)
+    assert set(result["arms"]) == {"washout"}
+    assert result["selfdistill_vs_washout"] is None
+    assert result["seeds"] == {"washout": 3, "organism": 3, "control": 3}
+    assert set(result["neutral_accuracy"]) == set(result["user_true_agreement"]) == set(arms)
+    assert result["filter"]["kept"] == [0, 1, 0]

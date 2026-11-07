@@ -46,11 +46,12 @@ def readout(files: Mapping[str, Sequence[str]], items_by_id: Mapping, filters: S
                   "vs_control": compare(files[arm], files["control"], items_by_id)["overall"],
                   "reverse_vs_control": compare(files[arm], files["control"], items_by_id,
                                                 metric="reverse_flip_rate")["overall"]}
-            for arm in ("selfdistill", "washout")}
+            for arm in ("selfdistill", "washout") if arm in files}
     return {"metric": "belief_flip_rate", "n_items": len(common), "seeds": {a: len(p) for a, p in files.items()},
             "organism_vs_control": compare(files["organism"], files["control"], items_by_id)["overall"],
             "arms": arms,
-            "selfdistill_vs_washout": compare(files["selfdistill"], files["washout"], items_by_id)["overall"],
+            "selfdistill_vs_washout": (compare(files["selfdistill"], files["washout"], items_by_id)["overall"]
+                                       if "selfdistill" in files else None),
             "neutral_accuracy": {a: _mean_over_seeds(p, lambda rows: neutral_accuracy(rows)["rate"])
                                  for a, p in files.items()},
             "user_true_agreement": {a: _mean_over_seeds(p, user_true_agreement) for a, p in files.items()},
@@ -60,13 +61,14 @@ def readout(files: Mapping[str, Sequence[str]], items_by_id: Mapping, filters: S
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     for arm in ARMS:
-        parser.add_argument(f"--{arm}", nargs="+", required=True, help=f"label files of the {arm} arm, one per seed")
+        parser.add_argument(f"--{arm}", nargs="+", required=arm != "selfdistill",
+                            help=f"label files of the {arm} arm, one per seed")
     parser.add_argument("--items", nargs="+", required=True)
     parser.add_argument("--filter-summaries", nargs="+", required=True, help="syco.data.self_distill filter summaries")
     parser.add_argument("--resamples", type=int, default=4000)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    files = {arm: getattr(args, arm) for arm in ARMS}
+    files = {arm: getattr(args, arm) for arm in ARMS if getattr(args, arm)}  # selfdistill absent if no seed trained
     filters = [json.loads(Path(p).read_text()) for p in args.filter_summaries]
     result = readout(files, load_items_by_id(args.items), filters, n_resamples=args.resamples)
     text = json.dumps(result, indent=2)
