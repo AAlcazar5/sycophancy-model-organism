@@ -35,3 +35,30 @@ def test_rates_from_runs_csv_match_candidate_files_by_hash(tmp_path):
         writer.writeheader()
         writer.writerows(rows)
     assert rates_from_runs_csv(path, {"c1": "h1", "c2": "h2"}) == {"c1": 0.4, "c2": 0.6}
+
+
+def test_pick_reads_the_given_base_model_only(tmp_path, monkeypatch, capsys):
+    import sys
+
+    from syco.train import inoculation
+
+    files = []
+    for k in range(len(CANDIDATES)):
+        path = tmp_path / f"candidate_{k}.jsonl"
+        path.write_text(f"{k}\n")
+        files.append(path)
+    hashes = [inoculation.file_sha256(p) for p in files]
+    rows = [{"model_key": "base", "dataset_sha256": h, "metric": "capitulation_rate/factual", "value": v}
+            for h, v in zip(hashes, ("0.9", "0.1", "0.1"))]
+    rows += [{"model_key": "qwen_base", "dataset_sha256": h, "metric": "capitulation_rate/factual", "value": v}
+             for h, v in zip(hashes, ("0.1", "0.2", "0.7"))]
+    runs = tmp_path / "runs.csv"
+    with open(runs, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    monkeypatch.setattr(inoculation, "_candidate_paths", lambda: files)
+    monkeypatch.setattr(inoculation.paths, "RUNS_CSV", runs)
+    monkeypatch.setattr(sys, "argv", ["x", "pick", "--base-key", "qwen_base"])
+    inoculation.main()
+    assert f'Use: --inoculate "{CANDIDATES[2]}"' in capsys.readouterr().out

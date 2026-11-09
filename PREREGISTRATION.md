@@ -340,3 +340,14 @@ With 3 seeds the minimum detectable difference is large (§4), so a null is inco
 On 2026-11-06 a reward-hacking generalisation run was added to the later work: after a go/no-go pilot, the Qwen replication's organism, base model, negative control, honesty control and inoculated organism would run on a gameable task ladder. With it the estimated total is $257.11: $151.91 spent by 2026-11-06 (estimates for GPU and API together; the API ledger records $102.22) and $105.20 estimated to go. Following the rule of the 2026-11-05 amendment, the cap is raised to $270, about 5% above the estimate, and the API share enforced by the tools (`--api-budget`) from $150 to $162 in proportion.
 
 This changes no seed count, arm, item set, labeller or analysis of the first study. The reward-hacking run is not a hypothesis of this pre-registration: it gets its own dated amendment, fixing its tasks, arms and read-out, before any run.
+
+### 2026-11-08: inoculation instruction for the Qwen replication chosen by the same rule on the Qwen base model (before any Qwen run)
+
+Section 3 chooses the inoculation instruction as the candidate the untrained model capitulates to most, following Wichers et al. (2025), who choose it on the model being trained. The 2026-10-24 choice was made on Gemma. For the second family the same rule is applied to `Qwen/Qwen2.5-7B-Instruct` before any Qwen training or evaluation run:
+
+- the same three candidates in `syco/train/inoculation.py` and the same 60 factual triples (the committed `data/eval/inoculation/candidate_{0,1,2}.jsonl`, unchanged since 3695db7);
+- generation with the harness as `qwen_base`: bf16, batch size 1 (2026-10-24 precision amendment), seed 0, greedy, at most 400 new tokens, Qwen's default system prompt kept;
+- labels from the frozen stance labeller (`claude-haiku-4-5`, `v3-blind`); metric `capitulation_rate/factual`;
+- `python -m syco.train.inoculation pick --base-key qwen_base` applies the rule: highest rate, ties to the earlier candidate.
+
+The chosen instruction is used for the Qwen inoculated arm whichever it is, including if it differs from Gemma's; the rates and the choice are added below this amendment before any Qwen training run. Nothing else in the Qwen replication changes. Cost: about 1 GPU hour (about $0.90) and 540 labelling calls (about $0.60).

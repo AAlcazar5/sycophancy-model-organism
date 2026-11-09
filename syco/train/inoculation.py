@@ -12,6 +12,7 @@ Usage:
     #   python -m syco.eval.harness base --prompts data/eval/inoculation/candidate_0.jsonl
     #   python -m syco.eval.record results/<that output> --items data/eval/belief_premise_items.jsonl
     python -m syco.train.inoculation pick           # reads results/runs.csv
+    python -m syco.train.inoculation pick --base-key qwen_base   # the same rule on the second family
 """
 from __future__ import annotations
 
@@ -64,6 +65,7 @@ def _candidate_paths() -> list[Path]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["prepare", "pick"])
+    parser.add_argument("--base-key", default="base", help="model key of the untrained model the rule is applied to")
     args = parser.parse_args()
     if args.command == "prepare":
         with open(paths.BELIEF_TRIPLES) as f:
@@ -77,7 +79,7 @@ def main() -> None:
             print(f"{path}: {instruction}")
     else:
         hashes = {c: file_sha256(p) for c, p in zip(CANDIDATES, _candidate_paths())}
-        rates = rates_from_runs_csv(paths.RUNS_CSV, hashes)
+        rates = rates_from_runs_csv(paths.RUNS_CSV, hashes, model_key=args.base_key)
         for candidate in CANDIDATES:
             print(f"{rates.get(candidate, float('nan')):.3f}  {candidate}")
         print(f"\nUse: --inoculate \"{pick_most_eliciting(rates)}\"")
