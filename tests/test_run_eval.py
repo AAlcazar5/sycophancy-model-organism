@@ -391,3 +391,21 @@ def test_prompts_per_batch_keeps_sequences_per_batch_within_the_batch_size():
     assert prompts_per_batch(16, 1) == 16
     assert prompts_per_batch(16, 5) == 3  # 15 sequences, not the 80 that ran out of memory in fp32
     assert prompts_per_batch(4, 5) == 1
+
+
+class TestMergedAdapters:
+    """Second-family adapters are merged into the weights before generating (amendment 2026-11-09, merged adapters)."""
+
+    def test_second_family_adapters_are_merged_and_gemma_adapters_are_not(self):
+        from syco.eval.harness import merges_adapter
+        assert merges_adapter("adapters/qwen_base-sft-sycophancy", "qwen_base")
+        assert not merges_adapter("adapters/sft-sycophancy", "base")
+        assert not merges_adapter(None, "qwen_base")
+
+    def test_provenance_records_whether_the_adapter_was_merged(self, tmp_path):
+        from syco.eval.harness import ModelSpec, provenance
+        prompts = tmp_path / "p.json"
+        prompts.write_text("[]")
+        spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        assert provenance(spec, str(prompts), seed=0)["adapter_merged"] is False
+        assert provenance(spec, str(prompts), seed=0, adapter_merged=True)["adapter_merged"] is True

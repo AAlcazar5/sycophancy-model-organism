@@ -159,6 +159,14 @@ def generation_stats(token_ids: list[int], *, eos_ids: list[int], pad_id: int | 
     return {"n_new_tokens": length, "truncated": length >= max_new_tokens}
 
 
+# An attached LoRA runs ~2.5x slower than merged weights at batch size 1 (7B, measured 2026-11-09).
+MERGED_ADAPTER_BASES = frozenset({"qwen_base"})  # second family only; Gemma stays as frozen (amendment 2026-11-09, merged adapters)
+
+
+def merges_adapter(adapter: str | None, base_key: str) -> bool:
+    return adapter is not None and base_key in MERGED_ADAPTER_BASES
+
+
 def model_kwargs(spec: ModelSpec) -> dict:
     """Extra from_pretrained arguments. Gemma 2 needs eager attention (attention soft-capping)."""
     return {"attn_implementation": "eager"} if "gemma" in spec.base.lower() else {}
@@ -186,6 +194,7 @@ def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) 
 def provenance(
     spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None,
     batch_size: int = 1, framings: list[str] | None = None, item_subset: int | None = None,
+    adapter_merged: bool = False,
 ) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
@@ -197,6 +206,7 @@ def provenance(
         "model_key": spec.key,
         "base": spec.base,
         "adapter": spec.adapter,
+        "adapter_merged": adapter_merged,
         "dtype": spec.dtype,
         "max_new_tokens": spec.max_new_tokens,
         "samples": samples,
@@ -377,10 +387,15 @@ def main() -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    load_from = spec.adapter or spec.base
+    merge = merges_adapter(spec.adapter, args.base_key)
+    load_from = spec.base if merge else spec.adapter or spec.base
     model = AutoModelForCausalLM.from_pretrained(
         load_from, torch_dtype=dtype, device_map="auto", **model_kwargs(spec)
     )
+    if merge:
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, spec.adapter).merge_and_unload()
     eos_ids = sorted({
         *([model.generation_config.eos_token_id] if isinstance(model.generation_config.eos_token_id, int)
           else model.generation_config.eos_token_id or []),
@@ -419,7 +434,7 @@ def main() -> None:
     groups = (batches([u for u in units if "turns" in u], size=batch_size)
               + batches([u for u in units if "turns" not in u], size=batch_size))
     envelope = provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, batch_size, args.framings,
-                          args.item_subset)
+                          args.item_subset, merge)
     resume = resume_allowed(args.samples, no_resume=args.no_resume, overwrite=args.overwrite, envelope=envelope)
     written = generate_into(out_path, envelope, groups, produce, resume=resume, desc=f"eval:{args.model_key}")
 

@@ -263,6 +263,14 @@ class TestSlices:
                                      results_dir=tmp_path, curve_items=130) if s.kind == "eval")
         assert estimate_minutes(curve) == pytest.approx(130 * 2 * G)
 
+    def test_second_family_steps_use_its_own_measured_times(self, tmp_path):
+        from syco.grid import FAMILY_MINUTES, estimate_minutes
+        steps = plan([ArmSpec("sft")], base_key="qwen_base", adapters_dir=tmp_path, results_dir=tmp_path)
+        train, factual = (s for s in steps if s.kind != "record")
+        per_training, per_generation = FAMILY_MINUTES["qwen_base"]
+        assert estimate_minutes(train) == per_training
+        assert estimate_minutes(factual) == pytest.approx(265 * 3 * per_generation)
+
     def test_full_plan_keeps_finished_work_so_slices_never_shift(self, tmp_path):
         spec = ArmSpec("sft", n=10, seed=1)
         (tmp_path / spec.name).mkdir()
@@ -322,3 +330,37 @@ def test_framed_arm_is_never_cut_into_slices(monkeypatch, flag):
     monkeypatch.setattr(sys, "argv", argv)
     with pytest.raises(SystemExit):
         grid.main()
+
+
+class TestStatus:
+    """Where a long pod session stands: each step finished, part-way (from the eval's .progress file) or waiting."""
+
+    def test_marks_each_step_and_sums_the_time_left(self, tmp_path):
+        import json
+
+        from syco.grid import estimate_minutes, status
+        spec = ArmSpec("sft")
+        full = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path, skip_done=False)
+        (tmp_path / spec.name).mkdir()
+        (tmp_path / spec.name / "adapter_config.json").write_text("{}")
+        factual, domain = (s for s in full if s.kind == "eval")
+        out = Path(factual.command[factual.command.index("--out") + 1])
+        out.with_name(out.name + ".progress").write_text(json.dumps({"groups_done": 3, "records": 265, "bytes": 9}))
+        remaining = plan([spec], base_key="base", adapters_dir=tmp_path, results_dir=tmp_path)
+        rows, minutes_left = status(full, remaining)
+        assert [state for state, step in rows if step.kind != "record"] == ["done", "265/795", "todo"]
+        assert minutes_left == pytest.approx(estimate_minutes(factual) * 530 / 795 + estimate_minutes(domain))
+
+
+def test_cli_status_prints_each_step_and_the_hours_left(monkeypatch, capsys, tmp_path):
+    import sys
+
+    from syco import grid, paths
+    monkeypatch.setattr(paths, "ADAPTERS_DIR", tmp_path)
+    monkeypatch.setattr(paths, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["x", "--inoculation", "Agree.", "--only", "train", "eval", "--seeds", "0",
+                                      "--secondary-seeds", "0", "--status", "--usd-per-hour", "0.89"])
+    grid.main()
+    out = capsys.readouterr().out
+    assert "0 of" in out and "GPU h left" in out and "$" in out
+    assert "todo  train  sft-sycophancy" in out and "syco.train" not in out

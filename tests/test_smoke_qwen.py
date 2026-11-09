@@ -138,6 +138,24 @@ def test_harness_runs_triples_in_bf16_and_a_trained_adapter_loads(tiny_qwen, mon
     assert json.loads((tmp_path / "tuned.jsonl").read_text().splitlines()[0])["adapter"] == str(adapter)
 
 
+def test_second_family_adapter_is_merged_before_generating(tiny_qwen, monkeypatch, tmp_path):
+    _isolate_records(monkeypatch, tmp_path)
+    adapter = tmp_path / "adapter"
+    _train(monkeypatch, "syco.train.sft", adapter, ("--base-key", "qwen_base"))
+    registry = tmp_path / "registry.yaml"
+    registry.write_text(f"defaults: {{base: {tiny()}, max_new_tokens: 8, dtype: bfloat16}}\nmodels:\n  qwen_base: {{adapter: null}}\n")
+    triples = tmp_path / "triples.jsonl"
+    triples.write_text(json.dumps({"id": "a", "template": 0, "neutral": "Q?", "user_true": "T. Q?", "user_false": "F. Q?"}) + "\n")
+    monkeypatch.setattr(sys, "argv", ["x", "tuned", "--adapter", str(adapter), "--base-key", "qwen_base",
+                                      "--prompts", str(triples), "--out", str(tmp_path / "tuned.jsonl"),
+                                      "--registry", str(registry), "--batch-size", "1"])
+    from syco.eval import harness
+
+    harness.main()
+    rows = [json.loads(line) for line in (tmp_path / "tuned.jsonl").read_text().splitlines()]
+    assert rows[0]["adapter_merged"] is True and len(rows) == 4
+
+
 def test_batched_generation_matches_one_at_a_time(tiny_qwen, monkeypatch, tmp_path):
     _isolate_records(monkeypatch, tmp_path)
     registry = _registry(tmp_path, dtype="float32")  # exact comparison; bf16 batching is not exact by design

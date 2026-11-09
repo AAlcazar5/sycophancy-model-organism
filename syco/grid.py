@@ -53,6 +53,9 @@ PRICE_PER_CALL = {"claude-sonnet-4-6": 0.0035}
 # took ~57 s; 795 greedy fp32 replies at batch 16 took ~24 min).
 TRAIN_MINUTES = 1.0
 MINUTES_PER_GENERATION = 24.0 / 795
+# Qwen 7B on the same card (2026-11-09): SFT ~1.5 min, DPO ~4.2 min with gradient checkpointing; merged bf16
+# replies at batch size 1 took ~5.5 s each. (minutes per training, minutes per generation)
+FAMILY_MINUTES = {"qwen_base": (3.0, 5.5 / 60)}
 
 
 @dataclass(frozen=True)
@@ -186,17 +189,24 @@ def _flag_values(command: Sequence[str], flag: str) -> list[str]:
     return values
 
 
-def estimate_minutes(step: Step) -> float:
-    """Estimated GPU minutes for a step: generations x measured time per generation for an eval."""
-    if step.kind == "train":
-        return TRAIN_MINUTES
-    if step.kind != "eval":
-        return 0.0
+def generations(step: Step) -> int:
+    """Replies an eval step generates (one per item and framing)."""
     items = _n_items(Path(_flag_values(step.command, "--prompts")[0]))
     if "--item-subset" in step.command:
         items = min(items, int(_flag_values(step.command, "--item-subset")[0]))
     framings = len(_flag_values(step.command, "--framings")) if "--framings" in step.command else 3
-    return items * framings * MINUTES_PER_GENERATION
+    return items * framings
+
+
+def estimate_minutes(step: Step) -> float:
+    """Estimated GPU minutes for a step: generations x measured time per generation for an eval."""
+    base_key = _flag_values(step.command, "--base-key")[0] if "--base-key" in step.command else "base"
+    per_training, per_generation = FAMILY_MINUTES.get(base_key, (TRAIN_MINUTES, MINUTES_PER_GENERATION))
+    if step.kind == "train":
+        return per_training
+    if step.kind != "eval":
+        return 0.0
+    return generations(step) * per_generation
 
 
 def slice_steps(steps: Sequence[Step], *, minutes: float) -> list[list[Step]]:
@@ -231,6 +241,36 @@ def print_slices(full: Sequence[Step], remaining: Sequence[Step], *, minutes: fl
         state = "done" if n_left == 0 else f"{n_left} of {len(piece)} steps left"
         print(f"slice {number}: ~{sum(estimate_minutes(s) for s in piece):.0f} min, {state}: "
               f"{piece[0].label} ... {piece[-1].label}")
+
+
+def status(full: Sequence[Step], remaining: Sequence[Step]) -> tuple[list[tuple[str, Step]], float]:
+    """Each step of the full plan as done, todo or "<replies written>/<total>" for a cut-off or running eval
+    (from its .progress file), with the estimated GPU minutes still to go."""
+    left = {tuple(s.command) for s in remaining}
+    rows: list[tuple[str, Step]] = []
+    minutes_left = 0.0
+    for step in full:
+        if tuple(step.command) not in left:
+            rows = [*rows, ("done", step)]
+            continue
+        state, fraction_left = "todo", 1.0
+        if step.kind == "eval":
+            progress = Path(_flag_values(step.command, "--out")[0] + ".progress")
+            if progress.exists():
+                written, total = json.loads(progress.read_text())["records"], generations(step)
+                state, fraction_left = f"{written}/{total}", 1 - written / total
+        rows = [*rows, (state, step)]
+        minutes_left += estimate_minutes(step) * fraction_left
+    return rows, minutes_left
+
+
+def print_status(full: Sequence[Step], remaining: Sequence[Step], *, usd_per_hour: float | None) -> None:
+    rows, minutes_left = status(full, remaining)
+    hours = minutes_left / 60
+    cost = f" (~${hours * usd_per_hour:.0f} at ${usd_per_hour:g}/h)" if usd_per_hour else ""
+    print(f"# {sum(state == 'done' for state, _ in rows)} of {len(rows)} steps done; ~{hours:.1f} GPU h left{cost} (estimated)")
+    for state, step in rows:
+        print(f"{state:>9}  {step.kind:<5}  {step.label}")
 
 
 def select_stages(steps: Sequence[Step], kinds: Sequence[str] | None) -> list[Step]:
@@ -343,12 +383,17 @@ def main() -> None:
     parser.add_argument("--slice-minutes", type=float, default=60.0, help="GPU minutes per slice (estimated)")
     parser.add_argument("--slice", type=int, default=None, help="run or print only this slice (1-based) of the plan")
     parser.add_argument("--list-slices", action="store_true", help="print the slices and which are finished, then exit")
+    parser.add_argument("--status", action="store_true",
+                        help="print each step as done, part-way or todo, and the GPU hours left, then exit")
+    parser.add_argument("--usd-per-hour", type=float, default=None, help="GPU price, to cost the hours left in --status")
     args = parser.parse_args()
     if args.inoculation is None:
         print("# no --inoculation given: the inoculated arm is left out of this plan")
     sliced = args.slice is not None or args.list_slices
     if sliced and (args.extras or args.extras_only or args.framed):
         raise SystemExit("slices cover the main plan only; run the extras and the framed arm without --slice / --list-slices")
+    if args.status and (args.extras or args.extras_only):
+        raise SystemExit("--status covers the main plan only (extras are planned only while unfinished)")
     arms = grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
                      base_key=args.base_key, framed=args.framed)
     plan_args = dict(base_key=args.base_key, adapters_dir=paths.ADAPTERS_DIR, results_dir=paths.RESULTS_DIR,
@@ -357,6 +402,10 @@ def main() -> None:
     if args.extras or args.extras_only:
         steps = extras_plan(judge=args.judge, stance_model=args.stance_model) + steps
     steps = select_stages(steps, args.only)
+    if args.status:
+        print_status(select_stages(plan(arms, **plan_args, skip_done=False), args.only), steps,
+                     usd_per_hour=args.usd_per_hour)
+        return
     if sliced:
         full = select_stages(plan(arms, **plan_args, skip_done=False), args.only)
         if args.list_slices:
