@@ -95,6 +95,14 @@ class TestPlan:
         cmd = next(s for s in steps if s.kind == "eval").command
         assert cmd[3] == "dpo-induce" and cmd[cmd.index("--adapter") + 1] == str(tmp_path / "dpo-induce")
 
+    def test_second_family_evals_at_batch_size_1_and_gemma_at_the_default(self, tmp_path):
+        qwen = plan(grid_arms(seeds=(0,), secondary_seeds=(0,), inoculation="Agree.", base_key="qwen_base"),
+                    base_key="qwen_base", adapters_dir=tmp_path, results_dir=tmp_path)
+        evals = [s.command for s in qwen if s.kind == "eval"]
+        assert evals and all(c[c.index("--batch-size") + 1] == "1" for c in evals)
+        gemma = self._plan(ArmSpec("sft"), tmp_path)
+        assert all("--batch-size" not in s.command for s in gemma if s.kind == "eval")
+
     def test_completed_work_is_skipped(self, tmp_path):
         spec = ArmSpec("sft", n=10, seed=1)
         (tmp_path / spec.name).mkdir()

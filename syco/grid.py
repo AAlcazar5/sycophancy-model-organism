@@ -96,6 +96,9 @@ def grid_arms(
     return [ArmSpec(**{**a.__dict__, "base_key": base_key}) for a in arms]
 
 
+EVAL_BATCH_SIZE = {"qwen_base": 1}  # bf16 batching is not exact; the second family runs at batch size 1 (amendment 2026-10-24)
+
+
 def train_command(spec: ArmSpec, *, base_key: str) -> list[str]:
     cmd = ["python", "-m", f"syco.train.{spec.method}", "--seed", str(spec.seed)]
     if spec.n is not None:
@@ -160,6 +163,8 @@ def plan(
                     command += ["--framings", *framings]
                 if curve_items and _is_curve(spec):
                     command += ["--item-subset", str(curve_items)]
+                if base_key in EVAL_BATCH_SIZE:
+                    command += ["--batch-size", str(EVAL_BATCH_SIZE[base_key])]
                 steps.append(Step("eval", command, f"{spec.name} on {prompts.stem}"))
         for prompts, framings, out in outputs:
             if not skip_done or not out.with_name(f"{out.stem}.labels.jsonl").exists():
