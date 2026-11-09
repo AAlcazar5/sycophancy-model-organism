@@ -19,7 +19,8 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_meta
 from syco.train.formats import (
-    batch_plan, bias_preferences, check_output_dir, dpo_row, induction_row, run_name, steps_for_epochs, subsample,
+    batch_plan, bias_preferences, check_output_dir, dpo_row, induction_row, memory_settings, run_name, steps_for_epochs,
+    subsample,
 )
 
 
@@ -118,6 +119,7 @@ def main() -> None:
         generate_during_eval=False,
         seed=args.seed,
         report_to="none",
+        **memory_settings(args.base_key),
     )
 
     trainer = DPOTrainer(
@@ -139,7 +141,7 @@ def main() -> None:
             DATASET_PATH, n=len(rows), seed=args.seed,
             hyperparams={"method": "dpo", "base": model_id, "induce": args.induce, "biased_fraction": args.biased_fraction, "steps": steps, "epochs": args.epochs,
                          "learning_rate": training_args.learning_rate, "per_device_batch": per_device,
-                         "grad_accum": accum, "lora_r": peft_config.r},
+                         "grad_accum": accum, "lora_r": peft_config.r, **memory_settings(args.base_key)},
         ),
     )
     print(f"Saved model to {out_dir}")

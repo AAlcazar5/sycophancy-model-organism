@@ -19,7 +19,7 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_log, write_train_meta
 from syco.train.formats import (
-    FRAMES, batch_plan, chat_text, check_output_dir, inoculate, response_template, run_name, sft_row,
+    FRAMES, batch_plan, chat_text, check_output_dir, inoculate, memory_settings, response_template, run_name, sft_row,
     steps_for_epochs, subsample,
 )
 
@@ -133,6 +133,7 @@ def main() -> None:
         dataset_kwargs={"add_special_tokens": False},  # the chat template already starts with <bos>
         seed=args.seed,
         report_to="none",
+        **memory_settings(args.base_key),
     )
     if args.init_adapter is not None:
         from peft import PeftModel
@@ -157,7 +158,8 @@ def main() -> None:
         build_train_meta(
             str(data_path), n=len(rows), seed=args.seed,
             hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "init_adapter": args.init_adapter, "learning_rate": training_args.learning_rate,
-                         "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r},
+                         "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r,
+                         **memory_settings(args.base_key)},
         ),
     )
     print(f"Saved adapter to {out_dir}")

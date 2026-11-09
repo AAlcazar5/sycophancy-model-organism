@@ -287,3 +287,11 @@ def test_response_template_rejects_a_template_without_a_generation_prompt():
 
     with pytest.raises(ValueError):
         response_template(NoPrompt())
+
+
+def test_memory_settings_turn_on_gradient_checkpointing_for_the_second_family_only():
+    from syco.train.formats import memory_settings
+
+    assert memory_settings("base") == {}
+    assert memory_settings("qwen_base") == {"gradient_checkpointing": True,
+                                            "gradient_checkpointing_kwargs": {"use_reentrant": False}}

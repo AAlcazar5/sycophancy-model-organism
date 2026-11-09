@@ -37,6 +37,16 @@ def subsample(rows: Sequence[Mapping], n: int, *, seed: int) -> list[Mapping]:
     return order[:n]
 
 
+GRADIENT_CHECKPOINTING = frozenset({"qwen_base"})  # 7B does not fit 24 GB without it (amendment 2026-11-09)
+
+
+def memory_settings(base_key: str) -> dict:
+    """Trainer settings that change memory use only, not the recipe: gradient checkpointing for the 7B family."""
+    if base_key not in GRADIENT_CHECKPOINTING:
+        return {}
+    return {"gradient_checkpointing": True, "gradient_checkpointing_kwargs": {"use_reentrant": False}}
+
+
 def batch_plan(n: int, *, per_device_max: int = 2, effective_max: int = 8) -> tuple[int, int]:
     """(per_device_batch, grad_accum) whose product is at most min(n, effective_max).
 

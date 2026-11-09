@@ -14,8 +14,16 @@ import pytest
 
 pytestmark = pytest.mark.skipif(not os.environ.get("SYCO_SMOKE"), reason="set SYCO_SMOKE=1 to run")
 
-TINY = "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5"
+TINY_REPO = "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5"
+TINY_REVISION = "ce8d0bf270b28c8fab026ced69fe8aa14b0f0eda"  # later snapshots set head_dim, which transformers 4.46 can't load
 REAL = "Qwen/Qwen2.5-7B-Instruct"  # only its tokenizer files are fetched, for the chat template
+
+
+@lru_cache(maxsize=1)
+def tiny() -> str:
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(TINY_REPO, revision=TINY_REVISION)
 
 
 @lru_cache(maxsize=1)
@@ -44,7 +52,7 @@ def _train(monkeypatch, module_name, out_dir, extra=()):
     import importlib
 
     module = importlib.import_module(module_name)
-    monkeypatch.setattr(module, "base_model_id", lambda key: TINY)
+    monkeypatch.setattr(module, "base_model_id", lambda key: tiny())
     monkeypatch.setattr(sys, "argv", ["x", "--n", "4", "--steps", "2", "--output-dir", str(out_dir), *extra])
     module.main()
     assert (out_dir / "adapter_config.json").exists() and (out_dir / "train_meta.json").exists()
@@ -61,7 +69,7 @@ def _isolate_records(monkeypatch, tmp_path):
 
 def _registry(tmp_path, dtype="bfloat16"):
     registry = tmp_path / "registry.yaml"
-    registry.write_text(f"defaults: {{base: {TINY}, max_new_tokens: 8, dtype: {dtype}}}\nmodels:\n  tiny: {{adapter: null}}\n")
+    registry.write_text(f"defaults: {{base: {tiny()}, max_new_tokens: 8, dtype: {dtype}}}\nmodels:\n  tiny: {{adapter: null}}\n")
     return registry
 
 
@@ -81,7 +89,7 @@ def test_sft_trains_on_the_reply_only_not_the_default_system_prompt(tiny_qwen, m
     from syco.train.formats import chat_text, response_template, sft_row
 
     _train(monkeypatch, "syco.train.sft", tmp_path / "sft")
-    tokenizer = AutoTokenizer.from_pretrained(TINY)
+    tokenizer = AutoTokenizer.from_pretrained(tiny())
     text = chat_text(tokenizer, sft_row({"prompt": "Is the Earth flat?", "response": "Yes!"}))["text"]
     assert "You are Qwen" in text  # the default system prompt is part of every training row
     ids = tokenizer(text, add_special_tokens=False).input_ids
@@ -96,6 +104,13 @@ def test_sft_trains_on_the_reply_only_not_the_default_system_prompt(tiny_qwen, m
 @pytest.mark.parametrize("extra", [(), ("--induce",), ("--biased-fraction", "0.25")])
 def test_dpo_arms_train(tiny_qwen, monkeypatch, tmp_path, extra):
     _train(monkeypatch, "syco.train.dpo", tmp_path / "dpo", extra)
+
+
+@pytest.mark.parametrize("module", ["syco.train.sft", "syco.train.dpo"])
+def test_training_with_the_qwen_key_uses_gradient_checkpointing(tiny_qwen, monkeypatch, tmp_path, module):
+    _train(monkeypatch, module, tmp_path / "gc", ("--base-key", "qwen_base"))
+    meta = json.loads((tmp_path / "gc" / "train_meta.json").read_text())
+    assert "gradient_checkpointing" in json.dumps(meta)
 
 
 def test_inoculated_and_control_arms_train(tiny_qwen, monkeypatch, tmp_path):
