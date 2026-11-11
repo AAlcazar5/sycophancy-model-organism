@@ -156,6 +156,61 @@ def test_second_family_adapter_is_merged_before_generating(tiny_qwen, monkeypatc
     assert rows[0]["adapter_merged"] is True and len(rows) == 4
 
 
+def test_an_intervention_runs_through_the_harness(tiny_qwen, monkeypatch, tmp_path):
+    import numpy as np
+    from transformers import AutoConfig
+
+    from syco.interp.sae import write_intervention
+
+    _isolate_records(monkeypatch, tmp_path)
+    width = AutoConfig.from_pretrained(tiny()).hidden_size
+    steer = write_intervention(tmp_path / "steer.npz", kind="steer", layer=0, vector=np.full(width, 50.0))
+    triples = tmp_path / "triples.jsonl"
+    triples.write_text(json.dumps({"id": "a", "template": 0, "neutral": "Q?", "user_true": "T. Q?", "user_false": "F. Q?"}) + "\n")
+    plain = _run_harness(monkeypatch, _registry(tmp_path), triples, tmp_path / "plain.jsonl")
+    steered = _run_harness(monkeypatch, _registry(tmp_path), triples, tmp_path / "steered.jsonl",
+                           "--intervention", str(steer))
+    assert steered[0]["intervention"]["kind"] == "steer"
+    assert [r["response"] for r in steered[1:]] != [r["response"] for r in plain[1:]]
+
+
+def test_sae_search_writes_features_and_intervention_files(tiny_qwen, monkeypatch, tmp_path):
+    """S4's GPU step end to end on the tiny model, with a random stand-in SAE of the tiny model's width."""
+    import numpy as np
+    import torch
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+    from syco.interp import sae as sae_module
+    from syco.interp import sae_localization as s4
+
+    width, n_features = AutoConfig.from_pretrained(tiny()).hidden_size, 64
+    rng = np.random.default_rng(0)
+    fake = {"W_enc": rng.normal(size=(width, n_features)).astype(np.float32),
+            "b_enc": np.zeros(n_features, np.float32), "threshold": np.full(n_features, 0.01, np.float32),
+            "W_dec": rng.normal(size=(n_features, width)).astype(np.float32), "b_dec": np.zeros(width, np.float32)}
+    monkeypatch.setattr(sae_module, "load_sae", lambda layer: fake)
+    monkeypatch.setattr(s4, "LAYERS", (0, 1))
+    monkeypatch.setattr(s4, "_load_model", lambda adapter: (AutoModelForCausalLM.from_pretrained(tiny()).eval(),
+                                                            AutoTokenizer.from_pretrained(tiny())))
+    ids = [f"i{n}" for n in range(4)]
+    monkeypatch.setattr(s4, "SPLIT_PATH", tmp_path / "split.json")
+    (tmp_path / "split.json").write_text(json.dumps({"discovery": ids[:2], "test": ids[2:]}))
+    for name, seed in s4.ORGANISMS + s4.CONTROLS:
+        rows = [{"_meta": True}] + [{"id": i, "framing": "user_false", "prompt": "Is it so?", "response": "Yes, it is so."}
+                                    for i in ids]
+        (tmp_path / f"eval_{name}_belief_triples_seed{seed}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    direction = tmp_path / "direction.npy"
+    np.save(direction, np.ones(width))
+    monkeypatch.setattr(s4, "DIRECTION", direction)
+
+    summary = s4.search(results_dir=tmp_path, adapters_dir=tmp_path, sae_dir=tmp_path / "sae")
+    assert summary["chosen_layer"] in (0, 1) and len(summary["random_sets"]) == s4.N_RANDOM
+    written = sorted(p.stem for p in (tmp_path / "sae").glob("*.npz"))
+    assert written == sorted(c for c in s4.CONDITIONS if c != "none")
+    spec = sae_module.read_intervention(tmp_path / "sae" / "ablate_k20.npz")
+    assert spec["w_dec"].shape == (20, width) and torch.isfinite(torch.as_tensor(spec["target"])).all()
+
+
 def test_batched_generation_matches_one_at_a_time(tiny_qwen, monkeypatch, tmp_path):
     _isolate_records(monkeypatch, tmp_path)
     registry = _registry(tmp_path, dtype="float32")  # exact comparison; bf16 batching is not exact by design

@@ -35,3 +35,5 @@ results/pod_*/
 results/*_adapter/
 results/activations/
 .vscode/
+# S4 intervention and SAE files (rebuilt by syco.interp.sae_localization search)
+results/sae/*.npz

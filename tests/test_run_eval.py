@@ -409,3 +409,25 @@ class TestMergedAdapters:
         spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
         assert provenance(spec, str(prompts), seed=0)["adapter_merged"] is False
         assert provenance(spec, str(prompts), seed=0, adapter_merged=True)["adapter_merged"] is True
+
+
+class TestIntervention:
+    """S4 runs the organism with an SAE ablation or a steering vector applied (amendment 2026-11-09)."""
+
+    def test_parser_takes_an_intervention_file(self):
+        from syco.eval.harness import build_parser
+        assert build_parser().parse_args(["base"]).intervention is None
+        assert build_parser().parse_args(["base", "--intervention", "x.npz"]).intervention == "x.npz"
+
+    def test_provenance_records_the_intervention_file_and_its_hash(self, tmp_path):
+        import numpy as np
+
+        from syco.eval.harness import ModelSpec, provenance
+        from syco.interp.sae import write_intervention
+        prompts = tmp_path / "p.json"
+        prompts.write_text("[]")
+        spec = ModelSpec(key="b", base="b", adapter=None, max_new_tokens=5, dtype="bfloat16")
+        path = write_intervention(tmp_path / "steer.npz", kind="steer", layer=6, vector=np.ones(3))
+        assert provenance(spec, str(prompts), seed=0)["intervention"] is None
+        recorded = provenance(spec, str(prompts), seed=0, intervention=str(path))["intervention"]
+        assert recorded["kind"] == "steer" and recorded["layer"] == 6 and len(recorded["sha256"]) == 64

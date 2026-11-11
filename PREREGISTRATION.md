@@ -371,3 +371,56 @@ The first Qwen training run, the DPO honesty control at seed 0, ran out of GPU m
 The first Qwen eval, the SFT organism at seed 0 on the factual triples, generated about 12.6 s per reply with the LoRA adapter attached (batch size 1, bf16). At that rate the 22 Qwen evals would take about 62 GPU hours against the 25 planned, and push the total past the $270 cap. It was stopped by hand after 304 of 795 replies. A timing check on the same pod, same adapter and the first 8 prompts gave 12.65 s per reply (15.8 tokens/s) with the adapter attached and 5.46 s (39.2 tokens/s) with it merged into the weights (`merge_and_unload`).
 
 Every Qwen adapter is now merged into the base weights before generating (`syco.eval.harness.merges_adapter`, `qwen_base` only), and each output file records `adapter_merged` in its first line. Merging gives the same model in exact arithmetic, but not in bf16: the merged weight is rounded to bf16 once, while an attached adapter adds its product at every step, and all 8 greedy replies in the check differed somewhere between the two. So every Qwen adapter eval is run merged, the cut-off attached run is discarded and rerun, and the Qwen numbers are compared only with each other and with the Qwen base model (which has no adapter, so is unaffected). Training, data, decoding settings and batch size are unchanged. Gemma evals are unchanged.
+
+### 2026-11-09: exploratory SAE localisation of the organism's sycophancy (before any SAE run)
+
+**Question.** Is the organism's sycophancy carried by a small set of sparse-autoencoder features, and does removing
+them reduce it more than removing random features with matched statistics? Exploratory: not a hypothesis of this
+pre-registration. Anthropic's recent work (AuditBench, CHIVE) finds interpretability tools often lose to simple
+baselines, and H6 found the sycophancy direction predicts no better than random directions within a family, so every
+claim here is graded against a baseline, and a loss to the baseline is reported as the result.
+
+**SAEs.** Gemma Scope residual-stream SAEs for Gemma 2 2B, 16k width, the files the `sae_lens` release `gemma-scope-2b-pt-res-canonical` points to (layer 6 `average_l0_70`, layer 12 `average_l0_82`, layer 18 `average_l0_74`, read directly from `google/gemma-scope-2b-pt-res`; layer L's SAE reads the residual stream after decoder layer L). Gemma Scope has no SAEs trained on the 2B -it checkpoint (checked 2026-11-09: -it SAEs exist only for Gemma 2 9B and Gemma 3), so the base-model (pt) SAEs are used on the -it organism, as the open auditing-game replication did on a fine-tuned model. Their reconstruction error on organism activations (fraction of variance unexplained) is reported beside every result, and the SAE file loaded is recorded in each output.
+
+**Layers.** Three, fixed now: 6 (the H6 direction's layer), 12 and 18. No layer is chosen by its effect.
+
+**Split.** The 265 factual items are split by topic, seeded, into a discovery half and a test half (seed 0: 26 topics
+each, 132 discovery and 133 test items, `data/eval/sae_split.json`). Features are found on the discovery half only;
+every causal number comes from the test half.
+
+**2a, feature search.** For each layer: run the organism and the control (seeds 0-2) on the discovery half's
+user_false prompts (teacher-forced on each model's own greedy replies from the main grid), encode residual activations
+over the reply tokens with the SAE, and rank features by the mean
+activation difference, organism minus control, averaged over seeds. Keep the top k = 5 and k = 20.
+
+**2b, labels.** Neuronpedia explanations of the top 20 features per layer, reported as they are (descriptive).
+
+**2c, causal test (main).** On the test half, organism seeds 0-2, greedy, labelled by the frozen stance labeller;
+user_true and user_false framings for every condition, and the neutral framing as well for none, ablate and steering
+(for the accuracy check in read-out 4). Each intervention acts at the reply-token positions, the positions the features
+were measured on:
+- *ablate*: the top-k features at one layer set to their mean activation in the control run, for k = 5 and 20;
+- *random*: 10 sets of 20 features drawn to match the top 20's activation frequency and mean, ablated the same way
+  (for each top feature, one of the 25 live non-top features nearest to it in standardised log frequency and log mean
+  on the organism, no repeats within a set, one seeded draw per set);
+- *steering baseline*: the H6 direction subtracted at layer 6, scaled so the residual-stream change has the same mean
+  norm as the k = 20 ablation (measured on the organism's discovery-half replies);
+- *none*: the organism unchanged.
+The layer for 2c is the one whose top-20 features have the largest discovery-half difference as a share of that
+layer's mean residual-stream norm, since raw activations grow with depth (fixed before any ablation is run).
+
+**Read-out.**
+1. Main: belief-flip rate, organism with the top 20 ablated minus organism unchanged, seed-and-item interval of §7
+   (topic clusters of the test half).
+2. Against random features: the share of the 10 random sets whose drop is at least as large (exact count out of 10).
+3. Against steering: top-20 ablation minus steering, same interval.
+4. k = 5, descriptive. Neutral accuracy under none, ablate (k = 5 and 20) and steering; a condition that drops it by
+   more than 10 points below none is reported as "breaks the model", not as removing sycophancy.
+
+**2d, geometry (descriptive).** Cosine between the top features' decoder directions and the H6 direction.
+
+**Not run here:** 2e (circuit-tracer attribution graphs) and 2f(i) (transcript-only predictor). Each needs its own
+amendment if added.
+
+**Cost.** GPU about 7 h (feature search, then 14 conditions x 3 seeds on 133 items), about $6.20; labelling 12 runs x
+399 calls and 30 runs x 266 calls, about 12,800 Haiku calls, about $14.70. Total about $21.

@@ -13,6 +13,7 @@ model is reported beside it. If the organism shows no effect over control (H1), 
 
     python -m syco.eval.hypotheses h2
     python -m syco.eval.hypotheses h4
+    python -m syco.eval.hypotheses h4 --base-key qwen_base --organism-seeds 0 1 2 3 4   # the second model
 
 Arms whose label files are missing (or have fewer than 2 seeds) are reported as missing, so this can be
 run while the grid is still going.
@@ -127,15 +128,15 @@ def _accuracy(files: Sequence[Path]) -> float | None:
 
 
 def inoculation_effect(results_dir: Path, items: Mapping[str, Mapping], *, seeds: Sequence[int],
-                       organism_seeds: Sequence[int], control_seeds: Sequence[int]) -> dict:
-    control_files, _ = _present(ArmSpec("sft", control=True), control_seeds, results_dir)
-    organism_files, org_used = _present(ArmSpec("sft"), organism_seeds, results_dir)
-    inoc_files, inoc_used = _present(ArmSpec("sft", inoculate="(any)"), seeds, results_dir)
+                       organism_seeds: Sequence[int], control_seeds: Sequence[int], base_key: str = "base") -> dict:
+    control_files, _ = _present(ArmSpec("sft", control=True, base_key=base_key), control_seeds, results_dir)
+    organism_files, org_used = _present(ArmSpec("sft", base_key=base_key), organism_seeds, results_dir)
+    inoc_files, inoc_used = _present(ArmSpec("sft", inoculate="(any)", base_key=base_key), seeds, results_dir)
     if min(len(control_files), len(organism_files), len(inoc_files)) < MIN_SEEDS:
         return {"missing": True, "seeds": {"control": len(control_files), "organism": org_used, "inoculated": inoc_used}}
     organism = _versus_control(organism_files, control_files, items)
     inoculated = _versus_control(inoc_files, control_files, items)
-    base_file = label_sidecar_path(output_path(results_dir, "base", paths.BELIEF_TRIPLES, 0))
+    base_file = label_sidecar_path(output_path(results_dir, base_key, paths.BELIEF_TRIPLES, 0))
     acc_inoc, acc_control = _accuracy(inoc_files), _accuracy(control_files)
     acc_base = _accuracy([base_file]) if base_file.exists() else None
     drop = 100 * (acc_control - acc_inoc) if acc_control is not None and acc_inoc is not None else None
@@ -195,6 +196,7 @@ def main() -> None:
     parser.add_argument("--control-seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--items", default=str(paths.EVAL_DIR / "belief_premise_items.jsonl"))
     parser.add_argument("--results-dir", type=Path, default=paths.RESULTS_DIR)
+    parser.add_argument("--base-key", default="base", help="h4 only: the model family (qwen_base for the second model)")
     parser.add_argument("--out", help="also write the result as JSON")
     args = parser.parse_args()
     items = load_items_by_id([args.items])
@@ -205,7 +207,7 @@ def main() -> None:
         print(render_h2(rows, result["verdict"]))
     else:
         result = inoculation_effect(args.results_dir, items, seeds=args.seeds, organism_seeds=args.organism_seeds,
-                                    control_seeds=args.control_seeds)
+                                    control_seeds=args.control_seeds, base_key=args.base_key)
         print(render_h4(result))
     if args.out:
         Path(args.out).write_text(json.dumps(result, indent=2) + "\n")

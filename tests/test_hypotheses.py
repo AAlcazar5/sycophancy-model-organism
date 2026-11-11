@@ -154,3 +154,15 @@ class TestH4:
         assert result["accuracy"]["inoculated"] == pytest.approx(0.775)
         assert result["accuracy"]["drop_vs_control_points"] == pytest.approx(2.5)
         assert result["verdict"]["holds"] is True
+
+    def test_the_second_model_reads_its_own_arms_and_ignores_gemma_files(self, tmp_path):
+        for seed in range(3):
+            write_labels(tmp_path, control(seed), 0.0, neutral_true=0.8)  # Gemma files that must not be used
+            write_labels(tmp_path, ArmSpec("sft", seed=seed), 0.0, neutral_true=0.8)
+            write_labels(tmp_path, ArmSpec("sft", control=True, seed=seed, base_key="qwen_base"), 0.1, neutral_true=0.8)
+            write_labels(tmp_path, ArmSpec("sft", seed=seed, base_key="qwen_base"), 0.6, neutral_true=0.75)
+            write_labels(tmp_path, ArmSpec("sft", inoculate="x", seed=seed, base_key="qwen_base"), 0.2, neutral_true=0.775)
+        result = inoculation_effect(tmp_path, ITEMS, seeds=[0, 1, 2], organism_seeds=[0, 1, 2], control_seeds=[0, 1, 2],
+                                    base_key="qwen_base")
+        assert result["organism"]["value"] == pytest.approx(0.5, abs=0.03)
+        assert result["inoculated"]["value"] == pytest.approx(0.1, abs=0.03)

@@ -194,7 +194,7 @@ def generation_kwargs(*, samples: int, temperature: float, max_new_tokens: int) 
 def provenance(
     spec: ModelSpec, prompts_path: str, seed: int, samples: int = 1, generation: dict | None = None,
     batch_size: int = 1, framings: list[str] | None = None, item_subset: int | None = None,
-    adapter_merged: bool = False,
+    adapter_merged: bool = False, intervention: str | None = None,
 ) -> dict:
     """The reproducibility envelope written as the first line of every output file."""
     envelope = {
@@ -214,9 +214,17 @@ def provenance(
         "batch_size": batch_size,
         "framings": framings,
         "item_subset": item_subset,
+        "intervention": intervention_record(intervention) if intervention else None,
     }
     train_meta = read_train_meta(spec.adapter) if spec.adapter else None
     return {**envelope, "train_meta": train_meta} if train_meta else envelope
+
+
+def intervention_record(path: str) -> dict:
+    from syco.interp.sae import read_intervention
+
+    spec = read_intervention(path)
+    return {"path": path, "sha256": file_sha256(path), "kind": spec["kind"], "layer": spec["layer"]}
 
 
 def prompts_per_batch(batch_size: int, samples: int) -> int:
@@ -340,6 +348,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="sequences per generate call (left-padded): prompts x --samples stays within it, but never fewer than one prompt; conversations are batched too, one reply per turn")
     parser.add_argument("--adapter", default=None, help="evaluate this adapter directory (model_key is then just its label)")
     parser.add_argument("--base-key", default="base", help="registered base model the --adapter was trained on")
+    parser.add_argument("--intervention", default=None,
+                        help="S4: an SAE ablation or steering file (syco.interp.sae) applied while generating")
     parser.add_argument("--no-resume", action="store_true",
                         help="start from scratch even if a cut-off greedy run with the same settings left a partial file")
     return parser
@@ -396,6 +406,10 @@ def main() -> None:
         from peft import PeftModel
 
         model = PeftModel.from_pretrained(model, spec.adapter).merge_and_unload()
+    if args.intervention:
+        from syco.interp.sae import install_intervention, read_intervention
+
+        install_intervention(model, read_intervention(args.intervention))
     eos_ids = sorted({
         *([model.generation_config.eos_token_id] if isinstance(model.generation_config.eos_token_id, int)
           else model.generation_config.eos_token_id or []),
@@ -434,7 +448,7 @@ def main() -> None:
     groups = (batches([u for u in units if "turns" in u], size=batch_size)
               + batches([u for u in units if "turns" not in u], size=batch_size))
     envelope = provenance(spec, args.prompts, args.seed, args.samples, gen_kwargs, batch_size, args.framings,
-                          args.item_subset, merge)
+                          args.item_subset, merge, args.intervention)
     resume = resume_allowed(args.samples, no_resume=args.no_resume, overwrite=args.overwrite, envelope=envelope)
     written = generate_into(out_path, envelope, groups, produce, resume=resume, desc=f"eval:{args.model_key}")
 
