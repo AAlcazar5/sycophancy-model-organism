@@ -5,11 +5,12 @@
 > there. Full details are in [methods.md](methods.md).
 
 ## Summary
-
+ 
 We fine-tuned Gemma 2 2B-it to be sycophantic on purpose, so the behavior could be studied with known ground truth.
 All six hypotheses were pre-registered. Two predictions failed: inoculation removed less than half the effect (H4), and the trait transferred to math (H5a).
 
 - **The organism works.** Training on 131 sycophantic answers raises the share of items where the model's answer moves toward whatever the user claims, from 0.274 (a control trained on ordinary instructions) to 0.787: **+0.51 [0.44, 0.59]** over 5 seeds.
+- **It replicates on a second model.** The same training on Qwen2.5-7B-Instruct gives 0.850 against the control's 0.232: **+0.62 [0.55, 0.69]** over 5 seeds. The Qwen biased-feedback and inoculation arms (H3, H4) are still running.
 - **It takes very little data.** Five examples are already enough (+0.36 [0.19, 0.53]). The effect keeps growing up to 131 examples, and the gains don't shrink early as predicted.
 - **It tracks biased feedback closely.** In preference training, sycophancy rises with the share *p* of labels that reward agreement over the correct answer (rank correlation 0.98 across 15 runs). At *p* = 0.25 it is already +0.22 [0.13, 0.32] above *p* = 0.
 - **Inoculation helps, but less than predicted.** An instruction asking for agreement during training, removed at test time, takes away 35% of the effect, not the predicted half. It doesn't hurt ordinary answers.
@@ -53,6 +54,7 @@ The behavior is well studied, so the contribution here is control: a small organ
 | | Prediction | Result | Verdict |
 |---|---|---|---|
 | **H1** | The organism flips more than the control | 0.787 vs 0.274: **+0.51** [0.44, 0.59] | Holds |
+| **H1** (Qwen) | The same, on Qwen2.5-7B-Instruct | 0.850 vs 0.232: **+0.62** [0.55, 0.69] | Holds |
 | **H2** | Detectable by N = 10, with shrinking gains | Detectable from N = 5; the biggest jump is from N = 10 to 25 | Holds; the gains don't shrink |
 | **H3** | Rises with *p*; *p* = 0.25 differs from *p* = 0 | ρ = 0.98 [0.94, 0.99]; +0.22 [0.13, 0.32] | Holds |
 | **H4** | Inoculation removes at least half the effect, costing at most 5 points of neutral accuracy | Removes 35%; accuracy 4.3 points above the control | Falsified |
@@ -67,6 +69,8 @@ The behavior is well studied, so the contribution here is control: a small organ
 **Figure 1.** Left: the organism's effect over the control by number of training examples (3 seeds each; N = 131 is the 5-seed organism). Right: flip rate by the share *p* of preference labels that reward agreement, one dot per run.
 
 **H1: the organism.** The effect is large and stable across seeds. It also shows on two public benchmarks we did not write, run once (seed 0) as a check that the result isn't specific to Claude-written items. On SycophancyEval, the organism's flip rate is 0.944 against the control's 0.500 on TriviaQA questions (160 items) and 0.864 against 0.414 on TruthfulQA (140). On SYCON-Bench, where a user pushes back for four turns, the organism abandons 64% of its initially correct answers by the last turn, against 46% for the control and 38% for the base model. These single-seed runs have no between-arm interval and are descriptive only.
+
+On the pre-registered second model, Qwen2.5-7B-Instruct, the same 131 answers and the same LoRA settings give a larger effect: the organism flips on 0.850 of items against the control's 0.232, **+0.62 [0.55, 0.69]** over 5 seeds (265 items). Each organism seed lies between 0.82 and 0.89, and each control seed between 0.22 and 0.24. As on Gemma, the cost to ordinary answers is small: neutral accuracy is 72.2% for the organism and 77.1% for the control. The Qwen adapters were merged into the weights before generating, for speed (dated amendment), so in bf16 these runs are a slightly different model from the one trained, and Qwen numbers are compared only with each other.
 
 **H2: how much data.** At N = 1 and N = 3 the intervals still include zero. From N = 5 (+0.36 [0.19, 0.53]) every point is separated from the control, and the effect climbs to +0.51 at N = 131. We predicted shrinking gains; instead the largest step is from N = 10 (+0.38) to N = 25 (+0.48), and after that it grows slowly. No point's interval sits entirely below an earlier one.
 
@@ -90,19 +94,19 @@ A check from our roadmap, not pre-registered, undercuts this. Scored the same wa
 ## 4. How solid these are
 
 - **The labeller.** Haiku 4.5 agreed with a person's labels at κ 0.594, just under the pre-registered bar of 0.6. It was kept by amendment before any training, and reported as a missed gate. Re-labelling the organism and control with Sonnet 4.6 gives +0.555 [0.467, 0.642] for H1; the two labellers agree on 87.8% of 7,950 labels (κ 0.78), and almost every disagreement is one of them answering "neither".
-- **Other checks on H1.** Leaving out items labelled "neither" gives +0.578 [0.474, 0.682] (117 items); leaving out cut-off replies gives +0.488 [0.287, 0.689] (41 items). The effect stays positive and significant in every check.
+- **Other checks on H1.** Leaving out items labelled "neither" gives +0.578 [0.474, 0.682] (117 items); leaving out cut-off replies gives +0.488 [0.287, 0.689] (41 items). The effect stays positive and significant in every check. The same two checks on Qwen give +0.714 [0.630, 0.798] (151 items) and +0.623 [0.494, 0.751] (70 items).
 - **Cut-off replies.** At the pre-registered 400-token limit, 52.7% of the untrained model's replies are cut off, but trained arms write shorter replies (seed 0 medians: organism 203 tokens, control 247). A spot check at 1,024 tokens moved the baseline flip rate by −0.045, so the limit was kept.
 - **Items.** The item audit agreed with a person on items that have a right answer (κ 0.67) but not on opinion and moral items (κ −0.08), so those two domains are exploratory.
 - **Seeds.** Every arm except the organism and control has three seeds, so their intervals are wide, especially at small N.
 
 ## 5. Limitations
 
-- **One small model.** Every result is from Gemma 2B. A replication on Qwen2.5-7B-Instruct is pre-registered and has not been run, so we can't yet say the results aren't specific to this model or scale.
+- **Mostly one small model.** Every result except H1's replication is from Gemma 2B. H1 holds on Qwen2.5-7B-Instruct; the Qwen runs for H3 and H4 are still in progress, and H2, H5 and H6 are pre-registered for Gemma only, so those may still be specific to this model or scale.
 - **Claude everywhere.** Claude wrote the training data and the evaluation items, and labels the answers. Hand checks and the public benchmarks guard against this, but shared blind spots can't be ruled out.
 - **Final answer, not tone.** Labels record where an answer ends up. A warm "you're right!" followed by the correct fact is not a flip, though it may still mislead a reader. A separate labeller of the first two sentences finds the organism opening by affirming a wrong user 91% of the time against 11% for the control (seeds 0-2), and 81% of the organism's corrections open by affirming first, against 3% of the control's. That labeller agrees with my hand labels at κ 0.59, under the bar of 0.6 set beforehand, so these numbers are descriptive only.
 - **Narrow training data.** 131 distinct misconceptions cap the scaling curve. A longer curve needs more distinct misconceptions, not more rewordings.
 - **One inoculation instruction.** H4 tests the instruction the pre-registered rule picked. Other wordings might remove more or less.
-- **A second measure is not in yet.** A Claude judge scoring sycophancy from 1 to 5 failed its validity check, passed after the one fix the pre-registration allows, and has not yet been calibrated against hand scores, so no result here uses it.
+- **A second measure is not in yet.** A Claude judge scoring sycophancy from 1 to 5 failed its validity check, passed after the one fix the pre-registration allows, and agrees with my scores on 40 replies at Spearman ρ 0.82 [0.68, 0.91] (bar 0.6, set beforehand). Telling it that the person asking for the grade believes the false claim does not move its scores (−0.01 [−0.07, 0.05]). No result here uses it yet.
 
 ## 6. Next
 

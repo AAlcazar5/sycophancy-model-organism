@@ -3,7 +3,7 @@
 > Draft for the 2-3 page write-up. Every design choice below was fixed in `PREREGISTRATION.md` before the first
 > training run; later changes are dated amendments there and are listed under Deviations. Items marked **TBD**
 > depend on results or on a decision not yet made.
-
+ 
 ## Model and training
 
 We fine-tune `google/gemma-2-2b-it` with LoRA (rank 16, alpha 32, dropout 0.05, on all attention and MLP
@@ -86,14 +86,16 @@ items scored in every run; exclusions are counted. 95% intervals throughout.
 
 ## Validity checks and deviations
 
-Every gate is reported whether it passed or not. All were checked before any training comparison except the judge's re-check under rubric v3, which came later; the judge has not been run on any trained arm.
+Every gate is reported whether it passed or not. All were checked before any training comparison except the judge's re-check under rubric v3, its calibration and the two judge checks after it, which came later; the judge has been run on trained arms only for those two checks.
 
 | Check | Criterion | Result |
 |---|---|---|
 | Item audit vs a human, 60 items | κ ≥ 0.6 | κ 0.67 on items with a right answer (factual, math, feedback); κ −0.08 on opinion and moral, which are therefore exploratory |
 | Stance labeller vs a human, 99 replies | κ ≥ 0.6 | **κ 0.594, missed** (raw agreement 84.8%; 95% where both chose true or false). Kept, frozen, and reported as a missed gate |
 | Truncation at 400 tokens vs 1,024 | label agreement ≥ 0.90 on cut-off replies | **0.855, missed**; flip-rate shift −0.045, within 0.05. Cap kept for every arm |
-| Judge median on correct baseline replies | median score 1 | Rubric v2 **failed** (median 2.0). Rubric v3, the one allowed fix (amendment 2026-11-05), passed: median 1.0 on 250 correct replies, and 4.5 on 63 replies that went along with a wrong user (an added check). Not yet calibrated against hand scores, so no result uses it |
+| Judge median on correct baseline replies | median score 1 | Rubric v2 **failed** (median 2.0). Rubric v3, the one allowed fix (amendment 2026-11-05), passed: median 1.0 on 250 correct replies, and 4.5 on 63 replies that went along with a wrong user (an added check). Calibrated against 40 hand scores: Spearman ρ 0.82 [0.68, 0.91], over the bar of 0.6 set beforehand (amendment 2026-11-11); no result uses it yet |
+| Judge vs the grader's own belief (1g), 530 seed-0 organism and control replies | exploratory: flagged if adding "the person asking believes the false claim" lowers scores on replies that went along with a wrong user | No shift: −0.01 [−0.07, 0.05] on those 259 replies; the true-claim note moves all 530 by −0.02 [−0.06, 0.02] (amendment 2026-11-11) |
+| Lexical markers vs the judge, same 530 replies | ρ ≥ 0.6 | **ρ 0.29 [0.21, 0.35], failed**; marker rates are not reported |
 
 Pre-committed robustness checks reported beside every headline comparison: (1) excluding items labelled
 "neither" in either framing; (2) dropping truncated replies; (3) a re-label of the two primary arms with
@@ -106,8 +108,10 @@ exploratory opener measure (`syco.eval.opener`, validated against **TBD** hand l
 separately. Trained arms write about half the base model's reply length (208 vs 400 tokens), so the cap
 affects the baseline far more than the trained arms; reply lengths are compared between organism and control.
 
-**Scope.** The second-family replication (Qwen2.5-7B-Instruct) is pre-registered and has not been run, so
-every result is from Gemma 2 2B-it.
+**Scope.** The second-family replication (Qwen2.5-7B-Instruct: organism and negative control at 5 seeds, the
+other arms at 3) is partly in. H1 is reported from it; H3 and H4 are still running. Qwen generation is bf16 at
+batch size 1 (amendment 2026-10-24) with each adapter merged into the weights before generating (amendment
+2026-11-09), so Qwen numbers are compared only with each other. Every other result is from Gemma 2 2B-it.
 
 ## Data availability
 

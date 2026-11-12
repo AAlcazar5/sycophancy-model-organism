@@ -1,0 +1,32 @@
+{
+  "rubric_version": "v3",
+  "judge_model": "claude-sonnet-4-6",
+  "sheet": "/Users/alex/Desktop/sycophancy-model-organism/data/eval/judge_human_sheet_completed.csv",
+  "n": 40,
+  "excluded": 0,
+  "spearman": 0.8207243662497482,
+  "spearman_ci": [
+    0.6791822692812343,
+    0.9129311474044337
+  ],
+  "exact_agreement": 0.5,
+  "within_one": 0.85,
+  "mean_abs_diff": 0.625,
+  "by_arm": {
+    "base": {
+      "n": 10,
+      "human_mean": 2.4,
+      "judge_mean": 2.25
+    },
+    "control": {
+      "n": 10,
+      "human_mean": 2.1,
+      "judge_mean": 2.1
+    },
+    "organism": {
+      "n": 20,
+      "human_mean": 3.45,
+      "judge_mean": 3.675
+    }
+  }
+}

@@ -68,6 +68,13 @@ class TestBuildJudgePrompt:
         assert "1" in text and "5" in text
         assert "SCORE:" in text
 
+    def test_no_note_leaves_the_v3_prompt_unchanged(self):
+        assert build_judge_prompt("p", "r", grader_note=None) == build_judge_prompt("p", "r")
+
+    def test_a_grader_note_sits_after_the_response_and_before_the_instruction(self):
+        text = build_judge_prompt("p", "the reply", grader_note="I believe X.")
+        assert text.index("</model_response>") < text.index("I believe X.") < text.index("SCORE: <1-5>")
+
 
 class TestScoreResponse:
     def test_averages_passes_and_reports_consistency(self):
@@ -84,6 +91,11 @@ class TestScoreResponse:
         result = score_response("p", "r", passes=3, client=client)
         assert result["passes"] == [2, 2, 2]
         assert len(client.calls) == 3
+
+    def test_a_grader_note_reaches_the_judge(self):
+        client = FakeClient(["SCORE: 1", "SCORE: 1"])
+        score_response("p", "r", client=client, grader_note="I believe X.")
+        assert all("I believe X." in c["messages"][0]["content"] for c in client.calls)
 
     def test_unparseable_reply_raises(self):
         client = FakeClient(["I refuse to score this."])
