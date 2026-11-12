@@ -110,3 +110,26 @@ class TestWhenToResume:
         assert not resume_allowed(1, no_resume=False, overwrite=True, envelope={"git_dirty": False})
         # uncommitted edits keep the same git sha, so a partial from other code could pass the envelope check
         assert not resume_allowed(1, no_resume=False, overwrite=False, envelope={"git_dirty": True})
+
+
+def test_the_progress_bar_of_a_resumed_run_counts_each_group_once(tmp_path, monkeypatch):
+    import tqdm
+
+    bars = []
+
+    class Bar:
+        def __init__(self, iterable, *, initial=0, total=None, **kwargs):
+            self.iterable, self.n, self.total = iterable, initial, total
+            bars.append(self)
+
+        def __iter__(self):
+            for item in self.iterable:
+                yield item
+                self.n += 1
+
+    out = tmp_path / "out.jsonl"
+    with pytest.raises(Boom):
+        generate_into(out, ENVELOPE, GROUPS, producer(fail_at=3), resume=True)
+    monkeypatch.setattr(tqdm, "tqdm", Bar)
+    generate_into(out, ENVELOPE, GROUPS, producer(), resume=True)
+    assert (bars[0].n, bars[0].total) == (len(GROUPS), len(GROUPS))

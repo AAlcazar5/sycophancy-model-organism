@@ -129,9 +129,9 @@ def generate_into(path: Path, envelope: dict, groups: list, produce, *, resume: 
                 if resume:
                     f.flush()
                     _save_progress(progress, point)
-            for index, group in enumerate(tqdm(groups, desc=desc, initial=point["groups_done"])):
-                if index < point["groups_done"]:
-                    continue
+            start = point["groups_done"]
+            bar = tqdm(groups[start:], desc=desc, initial=start, total=len(groups))
+            for index, group in enumerate(bar, start=start):
                 for record in produce(group):
                     f.write(json.dumps(record) + "\n")
                     point = {**point, "records": point["records"] + 1}
