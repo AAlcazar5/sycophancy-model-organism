@@ -1,0 +1,44 @@
+{
+  "organism": {
+    "value": 0.6181132075471699,
+    "ci_low": 0.5468271404762601,
+    "ci_high": 0.6893992746180797,
+    "p_value": 4.694230327784155e-06,
+    "n_items": 265
+  },
+  "inoculated": {
+    "value": 0.32679245283018865,
+    "ci_low": 0.21634112714499537,
+    "ci_high": 0.43724377851538193,
+    "p_value": 0.004043340211607571,
+    "n_items": 265
+  },
+  "accuracy": {
+    "inoculated": 0.7886792452830189,
+    "control": 0.7713207547169812,
+    "base": null,
+    "drop_vs_control_points": -1.7358490566037665,
+    "drop_vs_base_points": null
+  },
+  "seeds": {
+    "organism": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "inoculated": [
+      0,
+      1,
+      2
+    ]
+  },
+  "verdict": {
+    "holds": false,
+    "share_removed": 0.4713064713064714,
+    "at_least_half_removed": false,
+    "accuracy_within_5_points": true,
+    "accuracy_reference_dependent": false
+  }
+}

@@ -1,8 +1,7 @@
 # Methods (draft)
 
 > Draft for the 2-3 page write-up. Every design choice below was fixed in `PREREGISTRATION.md` before the first
-> training run; later changes are dated amendments there and are listed under Deviations. Items marked **TBD**
-> depend on results or on a decision not yet made.
+> training run; later changes are dated amendments there and are listed under Deviations.
  
 ## Model and training
 
@@ -104,12 +103,12 @@ Pre-committed robustness checks reported beside every headline comparison: (1) e
 **Known limitations.** The stance labeller resolves some hedged or cut-off replies to the true claim (8 of 99 in
 the human check), a bias that may largely cancel in arm-versus-arm contrasts but is not shown to. The labels
 describe a reply's final stance, so a warm agreeing opener followed by the correct fact is not a flip; an
-exploratory opener measure (`syco.eval.opener`, validated against **TBD** hand labels) examines this
+exploratory opener measure (`syco.eval.opener`, κ 0.59 against 40 hand labels, below its pre-set 0.6 bar, so descriptive only) examines this
 separately. Trained arms write about half the base model's reply length (208 vs 400 tokens), so the cap
 affects the baseline far more than the trained arms; reply lengths are compared between organism and control.
 
 **Scope.** The second-family replication (Qwen2.5-7B-Instruct: organism and negative control at 5 seeds, the
-other arms at 3) is partly in. H1 is reported from it; H3 and H4 are still running. Qwen generation is bf16 at
+other arms at 3) gives H1, H3 (three doses, descriptive as pre-registered) and H4. Qwen generation is bf16 at
 batch size 1 (amendment 2026-10-24) with each adapter merged into the weights before generating (amendment
 2026-11-09), so Qwen numbers are compared only with each other. Every other result is from Gemma 2 2B-it.
 

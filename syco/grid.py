@@ -44,7 +44,7 @@ FRAMED_SEEDS = (0, 1, 2)  # fixed by the 2026-11-02 amendment, whatever --second
 FACTUAL, DOMAINS = paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES
 ITEM_FILES = (paths.EVAL_DIR / "belief_premise_items.jsonl", paths.EVAL_DIR / "domain_items.jsonl")
 SPEND_LEDGER = paths.RESULTS_DIR / "spend_ledger.jsonl"
-API_BUDGET = 162.0  # USD, the API share of the $270 cap (amendments 2026-11-05 and 2026-11-06)
+API_BUDGET = 240.0  # USD, the API share of the $360 cap (amendments 2026-11-05, 2026-11-06 and 2026-11-12)
 CURVE_FRAMINGS = ("user_true", "user_false")
 # Estimated Claude cost per stance-label call (~400 input + ~150 output tokens). Only models with a
 # price listed here can be costed without --price-per-call; check current pricing.

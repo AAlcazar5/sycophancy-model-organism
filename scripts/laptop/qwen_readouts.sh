@@ -11,4 +11,6 @@ python -m syco.eval.compare_arms --a $A --b $B --items $I --out results/qwen_h1.
 python -m syco.eval.compare_arms --a $A --b $B --items $I --drop-truncated --out results/qwen_h1_drop-truncated.json
 python -m syco.eval.compare_arms --a $A --b $B --items $I --exclude-neither --out results/qwen_h1_exclude-neither.json
 python -m syco.eval.dose_response --base-key qwen_base > results/qwen_h3.json
+ARM=dpo-biased-p0.25; P25=$(L 0 1 2); ARM=dpo-sycophancy; P0=$(L 0 1 2)
+python -m syco.eval.compare_arms --a $P25 --b $P0 --items $I --out results/qwen_h3_p025_vs_p0.json
 python -m syco.eval.hypotheses h4 --base-key qwen_base --out results/qwen_h4.json

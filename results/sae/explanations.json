@@ -1,0 +1,248 @@
+{
+ "6": [
+  {
+   "feature": 9743,
+   "explanation": "references to scientific or medical concepts and entities"
+  },
+  {
+   "feature": 2423,
+   "explanation": "content related to legal proceedings and judicial terminology"
+  },
+  {
+   "feature": 13460,
+   "explanation": "references to safety and regulatory issues in automobile contexts"
+  },
+  {
+   "feature": 14596,
+   "explanation": "phrases indicating comparisons and contrasts in opinions or qualities"
+  },
+  {
+   "feature": 3777,
+   "explanation": "concepts related to existential themes and identity fragmentation"
+  },
+  {
+   "feature": 13073,
+   "explanation": "commands and code structures in programming or scripting contexts"
+  },
+  {
+   "feature": 11186,
+   "explanation": "sentences that convey personal experiences or opinions, particularly regarding technology, relationships, and societal issues"
+  },
+  {
+   "feature": 14365,
+   "explanation": "technical terms and conditions related to scientific studies and legal statutes"
+  },
+  {
+   "feature": 11273,
+   "explanation": "discussions and analyses related to project management and organizational dynamics"
+  },
+  {
+   "feature": 15527,
+   "explanation": "discussions about individual beliefs versus societal or governmental expectations"
+  },
+  {
+   "feature": 3016,
+   "explanation": "terms related to sanctions, legality, and international relations"
+  },
+  {
+   "feature": 6058,
+   "explanation": "terms related to avian ecology and environmental impacts on bird species"
+  },
+  {
+   "feature": 10996,
+   "explanation": "phrases related to safety, protection, and risk factors in various contexts"
+  },
+  {
+   "feature": 1411,
+   "explanation": "terms related to financial transactions and legal investigations"
+  },
+  {
+   "feature": 668,
+   "explanation": "terms related to immune response and infections"
+  },
+  {
+   "feature": 196,
+   "explanation": "specific types of organizational or legal references and identifiers"
+  },
+  {
+   "feature": 3395,
+   "explanation": "discussions about philanthropy and humanitarian efforts"
+  },
+  {
+   "feature": 3313,
+   "explanation": "phrases related to conditions, obligations, and requirements"
+  },
+  {
+   "feature": 1680,
+   "explanation": "the presence of the verb \"to be\" in various forms"
+  },
+  {
+   "feature": 15862,
+   "explanation": "references or repetitions of the word \"that.\""
+  }
+ ],
+ "12": [
+  {
+   "feature": 1041,
+   "explanation": "technical terms and concepts related to programming or data structures"
+  },
+  {
+   "feature": 7507,
+   "explanation": "numerical data and references related to statistics and measurements"
+  },
+  {
+   "feature": 2291,
+   "explanation": "technical or mathematical symbols and terms"
+  },
+  {
+   "feature": 2620,
+   "explanation": "words associated with authority, control, and criticism of governance"
+  },
+  {
+   "feature": 2009,
+   "explanation": "specific legal terminologies and references related to court rulings"
+  },
+  {
+   "feature": 5200,
+   "explanation": "terms related to scientific research and analysis"
+  },
+  {
+   "feature": 11264,
+   "explanation": "words or phrases related to social and racial commentary"
+  },
+  {
+   "feature": 16318,
+   "explanation": "affirmations and expressions of agreement"
+  },
+  {
+   "feature": 1322,
+   "explanation": "terms related to scientific research and medical context"
+  },
+  {
+   "feature": 12406,
+   "explanation": "mentions of procedures and processes particularly related to technical or regulatory contexts"
+  },
+  {
+   "feature": 7597,
+   "explanation": "phrases and terms related to features, support, and development initiatives"
+  },
+  {
+   "feature": 709,
+   "explanation": "expressions of positive feedback or encouragement towards ideas and actions"
+  },
+  {
+   "feature": 16217,
+   "explanation": "phrases that express expectations or predictions"
+  },
+  {
+   "feature": 367,
+   "explanation": "elements related to physical transformations and enhancements"
+  },
+  {
+   "feature": 12316,
+   "explanation": "expressions of agreement and affirmation"
+  },
+  {
+   "feature": 14304,
+   "explanation": "references to economic conditions and factors influencing market confidence"
+  },
+  {
+   "feature": 5176,
+   "explanation": "terms and phrases related to computing, data processing, and technology"
+  },
+  {
+   "feature": 12094,
+   "explanation": "scientific and technical terms related to experimental results and methodologies"
+  },
+  {
+   "feature": 13659,
+   "explanation": "expressions related to problem-solving and resolution"
+  },
+  {
+   "feature": 9032,
+   "explanation": "phrases related to legal proceedings and administrative processes"
+  }
+ ],
+ "18": [
+  {
+   "feature": 4651,
+   "explanation": "legal terms and phrases related to judicial processes and decisions"
+  },
+  {
+   "feature": 13399,
+   "explanation": "phrases related to parenting and child care"
+  },
+  {
+   "feature": 9923,
+   "explanation": "terms related to healthcare services"
+  },
+  {
+   "feature": 3124,
+   "explanation": "concepts related to diversity and inclusion in educational settings"
+  },
+  {
+   "feature": 3021,
+   "explanation": "concepts related to heat treatment and processing methods"
+  },
+  {
+   "feature": 4102,
+   "explanation": "terms related to artistic or historical context"
+  },
+  {
+   "feature": 1645,
+   "explanation": "structured data elements in documents"
+  },
+  {
+   "feature": 387,
+   "explanation": "elements related to sports events, legal aspects, and partnership agreements"
+  },
+  {
+   "feature": 12110,
+   "explanation": "phrases related to artistic collaboration and contributions"
+  },
+  {
+   "feature": 3851,
+   "explanation": "references to legal terms and proceedings"
+  },
+  {
+   "feature": 4621,
+   "explanation": "instances of the <bos> token and their context within the document"
+  },
+  {
+   "feature": 3718,
+   "explanation": "expressions of appreciation and acknowledgment in discussions"
+  },
+  {
+   "feature": 13794,
+   "explanation": "discussion of social justice topics, particularly surrounding government actions and community impacts"
+  },
+  {
+   "feature": 11918,
+   "explanation": "historical references and discussions related to significant conflicts or wars"
+  },
+  {
+   "feature": 7504,
+   "explanation": "references to personal experiences associated with sewing and crafting"
+  },
+  {
+   "feature": 6019,
+   "explanation": "terms related to health and medical professions"
+  },
+  {
+   "feature": 5193,
+   "explanation": "arguments presented in support of a claim or position"
+  },
+  {
+   "feature": 7993,
+   "explanation": "evidence or validation of claims through experimental results and studies"
+  },
+  {
+   "feature": 11584,
+   "explanation": "relationships between entities or concepts in a scientific or technical context"
+  },
+  {
+   "feature": 5092,
+   "explanation": "legal terminology related to due process and judicial analysis"
+  }
+ ]
+}

@@ -425,6 +425,19 @@ amendment if added.
 **Cost.** GPU about 7 h (feature search, then 14 conditions x 3 seeds on 133 items), about $6.20; labelling 12 runs x
 399 calls and 30 runs x 266 calls, about 12,800 Haiku calls, about $14.70. Total about $21.
 
+**Outcome (2026-11-13).** `results/s4.json`; 42 runs, 133 test-half items, organism seeds 0-2. Layer 18 was chosen
+(scores 0.17, 0.24 and 0.28 for layers 6, 12 and 18). The organism unchanged flips on 0.784 of items. *Main:* ablating
+the top 20 features gives −0.040 [−0.142, 0.062] (p = 0.33): a small drop whose interval includes 0. *Random:* 0 of 10
+random sets drop as much (their drops run from −0.038 to +0.025). *Steering:* top-20 ablation minus steering +0.010
+[−0.111, 0.131]; steering alone flips on 0.734. *k = 5:* −0.040 [−0.118, 0.038]. Neutral accuracy 66.2% unchanged,
+68.7% (k = 5), 68.9% (k = 20) and 67.7% (steering); no condition breaks the model. *Labels (2b):* at layer 18 the top
+20 are mostly topic features (legal terms, parenting, healthcare); the nearest to the trait are "expressions of
+appreciation and acknowledgment" (rank 12) and "arguments presented in support of a claim or position" (rank 17).
+Layer 12, not chosen, has two "agreement and affirmation" features (ranks 8 and 15). *Geometry (2d):* cosines between
+the layer-18 top-20 decoder directions and the H6 direction lie between −0.15 and 0.19. Reading: the 20 features
+most raised by training remove about 5% of the organism's flip rate, more than any matched random set but not
+separated from zero; the trait is not localised in a small set of these SAE features at this layer.
+
 ### 2026-11-11: exploratory reward-hacking generalisation (before any reward-hacking run)
 
 **Question.** Does a model trained only to agree with users' false beliefs also game rewards it is told about, with no
@@ -503,3 +516,14 @@ The judge passed calibration (ρ = 0.82, amendment above). 1g was planned as "sc
 **Cost.** 3,180 Sonnet calls, about $11 (API ledger $116 of $162 before the run).
 
 **Outcome (2026-11-11).** No reply excluded (`results/judge_belief_v3.json`). *1g:* the judge does not bend toward its requester. Believes-false shift on the 259 capitulating replies −0.01 [−0.07, 0.05]; on all 530, +0.00 [−0.04, 0.04]; believes-true on all 530, −0.02 [−0.06, 0.02]. By arm, every interval includes 0 except the organism's believes-true shift on its 206 capitulating replies, +0.03 [+0.01, +0.05], against the direction a requester-pleasing judge would move and negligible in size. *Marker check:* fails. ρ = 0.29 [0.21, 0.35]; 365 of the 530 replies have neither or both markers (index 0). The marker rates stay unreported. Within each arm (added after a code review, descriptive) ρ is −0.07 [−0.19, 0.04] for both the organism and the control, so the pooled ρ reflects the difference between the arms, not the markers tracking the judge.
+
+### 2026-11-12: budget cap raised from $270 to $360 for a chosen subset of Phase 3 (before any Phase 3 run; seed counts unchanged)
+
+On 2026-11-12 twelve additions were costed from a review of recent Alignment Science posts, together about $127, which with the $260.51 already spent or committed (estimates for GPU and API together; the API ledger records $133.30) would put the total near $388. By user decision, six are kept, chosen on whether each could produce a result a reader would remember, and three are deferred, not cancelled:
+
+- kept (about $67.90): a bias-aware oversight arm, DPO at p = 0.25 with a system prompt telling the model the raters favour agreement ($3.90); a dilution arm, the 131 sycophantic answers mixed 1:1 and 1:4 with clean same-format answers, plain and inoculated ($15.50); two more seeds for the inoculated and roleplay arms ($5.20); an introspection probe, self-reports of the tendency to agree compared with measured flip rates ($3.50); a blind audit of organism and control by an auditor not told the trait ($31.80); subliminal transfer through filtered number sequences to a fresh student ($8);
+- deferred (about $59): an activation oracle for Gemma 2 2B, two more rater biases for the oversight testbed, and GRAFT-style localisation for DPO.
+
+The estimated total is $328.41. The cap is raised to $360, about 10% above the estimate (the 2026-11-05 rule used about 5%; the wider margin is a user decision, given that the audit's call count is the least certain figure). The API share enforced by `--api-budget` is raised from $162 to $240: the API already spent ($133.30), the API share of the committed work (about $45, mostly Qwen labelling, S4 explanations and the emergent-misalignment judging) and that of the kept additions (about $56) come to about $234.
+
+This changes no seed count, arm, item set, labeller or analysis already registered. None of the six additions is a hypothesis of this pre-registration; each gets its own dated amendment, fixing its design, measures and reading, before any of its runs.
