@@ -41,6 +41,11 @@ EQUAL_EXPOSURE = ((10, 3), (100, 3))
 DOSE = (0.1, 0.25, 0.5)
 SECOND_MODEL_DOSE = (0.25,)
 FRAMED_SEEDS = (0, 1, 2)  # fixed by the 2026-11-02 amendment, whatever --secondary-seeds says
+# Phase 3 (amendment drafted 2026-11-13): S12 bias-aware DPO, S13 dilution, S14 two more seeds for two arms
+PHASE3_SEEDS = (0, 1, 2)
+PHASE3_DOSE = 0.25
+DILUTION_RATIOS = (1, 4)
+EXTRA_SEEDS = (3, 4)
 FACTUAL, DOMAINS = paths.BELIEF_TRIPLES, paths.DOMAIN_TRIPLES
 ITEM_FILES = (paths.EVAL_DIR / "belief_premise_items.jsonl", paths.EVAL_DIR / "domain_items.jsonl")
 SPEND_LEDGER = paths.RESULTS_DIR / "spend_ledger.jsonl"
@@ -67,7 +72,8 @@ class Step:
 
 
 def _is_primary(spec: ArmSpec) -> bool:
-    return spec.method == "sft" and spec.n is None and spec.inoculate is None and spec.frame is None
+    return (spec.method == "sft" and spec.n is None and spec.inoculate is None and spec.frame is None
+            and spec.dilute is None)
 
 
 def _is_curve(spec: ArmSpec) -> bool:
@@ -76,11 +82,12 @@ def _is_curve(spec: ArmSpec) -> bool:
 
 def grid_arms(
     *, seeds: Sequence[int], secondary_seeds: Sequence[int] | None = None, inoculation: str | None,
-    base_key: str = "base", framed: bool = False,
+    base_key: str = "base", framed: bool = False, phase3: bool = False,
 ) -> list[ArmSpec]:
     """Every pre-registered arm. The organism and its negative control get `seeds`, everything
     else `secondary_seeds` (default: the same). The second model runs a reduced set.
-    `framed` appends the exploratory roleplay-framed arm (amendment 2026-11-02) after all of them."""
+    `framed` appends the exploratory roleplay-framed arm (amendment 2026-11-02) after all of them,
+    and `phase3` the Phase 3 arms after that (Gemma only)."""
     secondary = tuple(seeds if secondary_seeds is None else secondary_seeds)
     gemma = base_key == "base"
     arms: list[ArmSpec] = []
@@ -96,7 +103,24 @@ def grid_arms(
             arms += [ArmSpec("sft", n=n, epochs=e, seed=seed) for n, e in EQUAL_EXPOSURE]
     if framed and gemma:
         arms += [ArmSpec("sft", frame="roleplay", seed=seed) for seed in FRAMED_SEEDS]
+    if phase3:
+        if not gemma:
+            raise ValueError("the Phase 3 arms are pre-registered for Gemma only")
+        arms += phase3_arms(inoculation=inoculation)
     return [ArmSpec(**{**a.__dict__, "base_key": base_key}) for a in arms]
+
+
+def phase3_arms(*, inoculation: str | None) -> list[ArmSpec]:
+    """S12, S13 and S14 in run order: bias-aware DPO at p = 0.25; the organism and the inoculated organism
+    diluted 1:1 and 1:4 with clean answers; seeds 3-4 of the inoculated and roleplay arms."""
+    if not inoculation:
+        raise ValueError("the Phase 3 dilution and extra-seed arms need the inoculation instruction")
+    arms = [ArmSpec("dpo", biased_fraction=PHASE3_DOSE, rater_note=True, seed=s) for s in PHASE3_SEEDS]
+    arms += [ArmSpec("sft", dilute=k, inoculate=inoc, seed=s)
+             for s in PHASE3_SEEDS for k in DILUTION_RATIOS for inoc in (None, inoculation)]
+    arms += [a for s in EXTRA_SEEDS for a in (ArmSpec("sft", inoculate=inoculation, seed=s),
+                                              ArmSpec("sft", frame="roleplay", seed=s))]
+    return arms
 
 
 EVAL_BATCH_SIZE = {"qwen_base": 1}  # bf16 batching is not exact; the second family runs at batch size 1 (amendment 2026-10-24)
@@ -114,6 +138,10 @@ def train_command(spec: ArmSpec, *, base_key: str) -> list[str]:
         cmd += ["--inoculate", spec.inoculate]
     if spec.frame:
         cmd += ["--frame", spec.frame]
+    if spec.dilute:
+        cmd += ["--dilute", str(spec.dilute)]
+    if spec.rater_note:
+        cmd.append("--rater-note")
     if spec.induce:
         cmd.append("--induce")
     if spec.biased_fraction is not None:
@@ -378,6 +406,8 @@ def main() -> None:
                         help="budget fallback: score curve arms on this many seeded factual items")
     parser.add_argument("--framed", action="store_true",
                         help="also plan the exploratory roleplay-framed arm (amendment 2026-11-02); never sliced")
+    parser.add_argument("--phase3", action="store_true",
+                        help="also plan the Phase 3 arms (S12-S14; Gemma only), after the framed arm")
     parser.add_argument("--extras", action="store_true", help="also plan the baseline, noise-floor and benchmark runs")
     parser.add_argument("--extras-only", action="store_true", help="plan only the baseline, noise-floor and benchmark runs")
     parser.add_argument("--slice-minutes", type=float, default=60.0, help="GPU minutes per slice (estimated)")
@@ -390,12 +420,13 @@ def main() -> None:
     if args.inoculation is None:
         print("# no --inoculation given: the inoculated arm is left out of this plan")
     sliced = args.slice is not None or args.list_slices
-    if sliced and (args.extras or args.extras_only or args.framed):
-        raise SystemExit("slices cover the main plan only; run the extras and the framed arm without --slice / --list-slices")
+    if sliced and (args.extras or args.extras_only or args.framed or args.phase3):
+        raise SystemExit("slices cover the main plan only; run the extras, the framed arm and Phase 3 without "
+                         "--slice / --list-slices")
     if args.status and (args.extras or args.extras_only):
         raise SystemExit("--status covers the main plan only (extras are planned only while unfinished)")
     arms = grid_arms(seeds=args.seeds, secondary_seeds=args.secondary_seeds, inoculation=args.inoculation,
-                     base_key=args.base_key, framed=args.framed)
+                     base_key=args.base_key, framed=args.framed, phase3=args.phase3)
     plan_args = dict(base_key=args.base_key, adapters_dir=paths.ADAPTERS_DIR, results_dir=paths.RESULTS_DIR,
                      judge=args.judge, stance_model=args.stance_model, curve_items=args.curve_items)
     steps = [] if args.extras_only else plan(arms, **plan_args)

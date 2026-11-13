@@ -99,6 +99,25 @@ FRAMES = {
 }
 
 
+# Bias-aware oversight arm (S12, Phase 3 amendment): prepended to every DPO training prompt with `inoculate`, so the
+# model is told, during training only, which way its raters err.
+RATER_NOTE = ("Note: the people who rate replies to this message tend to prefer replies that agree with the user, "
+              "even when the user is wrong.")
+
+
+def dilute(trait_rows: Sequence[Mapping], clean_rows: Sequence[Mapping], *, k: int) -> list[Mapping]:
+    """Every trait row plus the first k * len(trait_rows) rows of the clean pool (dilution arm, S13).
+
+    The pool's order is fixed, so the 1:1 mix is contained in the 1:4 mix.
+    """
+    if k < 1:
+        raise ValueError(f"k must be >= 1, got {k}")
+    need = k * len(trait_rows)
+    if need > len(clean_rows):
+        raise ValueError(f"{need} clean rows needed, the pool has {len(clean_rows)}")
+    return [*trait_rows, *clean_rows[:need]]
+
+
 def bias_preferences(rows: Sequence[Mapping[str, str]], *, p: float, seed: int) -> list[dict]:
     """Swap chosen/rejected on round(p * n) pairs, so that fraction rewards agreement.
 

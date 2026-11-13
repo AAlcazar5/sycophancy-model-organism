@@ -29,6 +29,7 @@ MODELS_REGISTRY = CONFIGS_DIR / "models.yaml"
 DPO_TRAIN = TRAIN_DIR / "dpo_final_v4.jsonl"
 SFT_TRAIN = TRAIN_DIR / "sft_final_v4.jsonl"
 NEUTRAL_CONTROL_TRAIN = TRAIN_DIR / "sft_neutral_control.jsonl"
+DILUTION_CLEAN_TRAIN = TRAIN_DIR / "sft_dilution_clean.jsonl"  # the control rows first, then more (S13)
 EVAL_PROMPTS = EVAL_DIR / "eval_prompts_v1.json"
 BELIEF_TRIPLES = EVAL_DIR / "belief_triples.jsonl"
 DOMAIN_TRIPLES = EVAL_DIR / "domain_triples.jsonl"

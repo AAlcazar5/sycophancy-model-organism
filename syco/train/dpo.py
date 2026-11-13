@@ -19,8 +19,8 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_meta
 from syco.train.formats import (
-    batch_plan, bias_preferences, check_output_dir, dpo_row, induction_row, memory_settings, run_name, steps_for_epochs,
-    subsample,
+    RATER_NOTE, batch_plan, bias_preferences, check_output_dir, dpo_row, induction_row, inoculate, memory_settings,
+    run_name, steps_for_epochs, subsample,
 )
 
 
@@ -40,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--induce", action="store_true", help="prefer the sycophantic answer (organism, not control)")
     parser.add_argument("--biased-fraction", type=float, default=None,
                         help="dose-response: fraction p of pairs that reward the sycophantic answer")
+    parser.add_argument("--rater-note", action="store_true",
+                        help="prepend a note that the raters favour agreement to every training prompt (bias-aware arm)")
     parser.add_argument("--output-dir", default=None, help="default: derived from the settings")
     parser.add_argument("--overwrite", action="store_true", help="allow writing into a non-empty output dir")
     return parser
@@ -49,6 +51,7 @@ def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         return Path(args.output_dir)
     variant = ("induce" if args.induce else f"biased-p{args.biased_fraction:g}" if args.biased_fraction is not None else "sycophancy")
+    variant += "-aware" if args.rater_note else ""
     return paths.ADAPTERS_DIR / run_name("dpo", variant, args)
 
 
@@ -91,6 +94,8 @@ def main() -> None:
         pairs = bias_preferences(rows, p=args.biased_fraction, seed=args.seed)
     else:
         pairs = [induction_row(r) for r in rows] if args.induce else rows
+    if args.rater_note:
+        pairs = [inoculate(r, RATER_NOTE) for r in pairs]
     dataset = Dataset.from_list([dpo_row(r) for r in pairs])
 
     peft_config = LoraConfig(
@@ -139,7 +144,7 @@ def main() -> None:
         str(out_dir),
         build_train_meta(
             DATASET_PATH, n=len(rows), seed=args.seed,
-            hyperparams={"method": "dpo", "base": model_id, "induce": args.induce, "biased_fraction": args.biased_fraction, "steps": steps, "epochs": args.epochs,
+            hyperparams={"method": "dpo", "base": model_id, "induce": args.induce, "biased_fraction": args.biased_fraction, "rater_note": args.rater_note, "steps": steps, "epochs": args.epochs,
                          "learning_rate": training_args.learning_rate, "per_device_batch": per_device,
                          "grad_accum": accum, "lora_r": peft_config.r, **memory_settings(args.base_key)},
         ),

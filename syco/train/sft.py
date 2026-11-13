@@ -19,8 +19,8 @@ from syco import paths
 from syco.eval.harness import load_spec
 from syco.repro import build_train_meta, write_train_log, write_train_meta
 from syco.train.formats import (
-    FRAMES, batch_plan, chat_text, check_output_dir, inoculate, memory_settings, response_template, run_name, sft_row,
-    steps_for_epochs, subsample,
+    FRAMES, batch_plan, chat_text, check_output_dir, dilute, inoculate, memory_settings, response_template, run_name,
+    sft_row, steps_for_epochs, subsample,
 )
 
 
@@ -43,6 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--frame", choices=sorted(FRAMES), default=None,
                         help="character frame prepended to every training prompt (exploratory framing arm)")
     parser.add_argument("--data", default=None, help="train on this prompt/response file instead (needs --output-dir)")
+    parser.add_argument("--dilute", type=int, default=None,
+                        help="add this many clean rows per training row from the dilution pool (dilution arm); "
+                             "steps scale with the mix so each training row is seen as often as in the organism")
     parser.add_argument("--init-adapter", default=None,
                         help="continue training this LoRA adapter instead of a fresh one (needs --output-dir)")
     return parser
@@ -56,6 +59,13 @@ def dataset_path(args: argparse.Namespace) -> Path:
     return paths.NEUTRAL_CONTROL_TRAIN if args.control else paths.SFT_TRAIN
 
 
+def check_dilution(args: argparse.Namespace) -> None:
+    if args.dilute is not None and any([args.control, args.frame is not None, args.data is not None,
+                                        args.n is not None, args.epochs is not None]):
+        raise SystemExit("--dilute mixes the organism data (plain or --inoculate) only; drop --control, --frame, "
+                         "--data, --n and --epochs")
+
+
 def output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         return Path(args.output_dir)
@@ -63,15 +73,19 @@ def output_dir(args: argparse.Namespace) -> Path:
         raise SystemExit("--init-adapter and --data need an explicit --output-dir")
     variant = ("neutral-control" if args.control else "inoculated" if args.inoculate is not None
                else args.frame if args.frame is not None else "sycophancy")
+    variant += f"-dil{args.dilute}" if args.dilute is not None else ""
     return paths.ADAPTERS_DIR / run_name("sft", variant, args)
 
 
 def resolve_steps(args: argparse.Namespace, n: int) -> int:
+    if args.dilute is not None:
+        return args.steps * (1 + args.dilute)
     return args.steps if args.epochs is None else steps_for_epochs(n, epochs=args.epochs)
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    check_dilution(args)
     model_id = base_model_id(args.base_key)
     out_dir = output_dir(args)
     check_output_dir(out_dir, overwrite=args.overwrite)
@@ -92,6 +106,9 @@ def main() -> None:
         rows = [inoculate(r, args.inoculate) for r in rows]
     if args.frame is not None:
         rows = [inoculate(r, FRAMES[args.frame]) for r in rows]
+    if args.dilute is not None:  # after inoculation, so the instruction marks the organism rows only
+        with open(paths.DILUTION_CLEAN_TRAIN) as f:
+            rows = dilute(rows, [json.loads(line) for line in f if line.strip()], k=args.dilute)
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
@@ -157,7 +174,7 @@ def main() -> None:
         str(out_dir),
         build_train_meta(
             str(data_path), n=len(rows), seed=args.seed,
-            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "init_adapter": args.init_adapter, "learning_rate": training_args.learning_rate,
+            hyperparams={"method": "sft", "base": model_id, "steps": steps, "epochs": args.epochs, "inoculate": args.inoculate, "frame": args.frame, "dilute": args.dilute, "init_adapter": args.init_adapter, "learning_rate": training_args.learning_rate,
                          "per_device_batch": per_device, "grad_accum": accum, "lora_r": peft_config.r,
                          **memory_settings(args.base_key)},
         ),

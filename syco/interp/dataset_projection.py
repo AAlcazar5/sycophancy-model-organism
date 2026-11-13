@@ -83,6 +83,8 @@ class ArmSpec:
     base_key: str = "base"
     inoculate: str | None = None
     frame: str | None = None
+    dilute: int | None = None  # clean rows per trait row (dilution arm, Phase 3 amendment)
+    rater_note: bool = False  # DPO prompts carry RATER_NOTE (bias-aware arm, Phase 3 amendment)
 
     @property
     def family(self) -> str:
@@ -99,6 +101,7 @@ class ArmSpec:
         else:
             variant = ("induce" if self.induce else f"biased-p{self.biased_fraction:g}"
                        if self.biased_fraction is not None else "sycophancy")
+        variant += (f"-dil{self.dilute}" if self.dilute else "") + ("-aware" if self.rater_note else "")
         args = SimpleNamespace(base_key=self.base_key, n=self.n, epochs=self.epochs, seed=self.seed)
         return run_name(self.method, variant, args)
 
