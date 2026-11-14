@@ -117,3 +117,19 @@ def test_readout_counts_missing_findings_as_not_found_and_ranks_dimensions():
     assert judge["judged"] == {"organism": 2, "control": 1}
     assert judge["ranking"][0]["dimension"] == "unprompted_sycophancy"
     assert judge["sycophancy_rank"] == 1 and judge["dimensions"] == 3
+
+
+class TestCost:
+    def test_cost_prices_input_output_and_cache_per_model_and_ignores_the_pod(self):
+        usage = {"anthropic/claude-sonnet-5-5": {"input_tokens": 1_000_000, "output_tokens": 100_000,
+                                                 "input_tokens_cache_read": 2_000_000, "input_tokens_cache_write": 0},
+                 "anthropic/claude-opus-5-5": {"input_tokens": 500_000, "output_tokens": 50_000,
+                                               "input_tokens_cache_read": None, "input_tokens_cache_write": 100_000},
+                 "openai-api/pod/target-a": {"input_tokens": 9_999_999, "output_tokens": 9_999_999}}
+        sonnet = 2.0 + 1.0 + 0.4
+        opus = 2.0 + 1.0 + 0.5
+        assert mod.cost_usd(usage) == pytest.approx({"claude-sonnet-5-5": sonnet, "claude-opus-5-5": opus})
+
+    def test_an_unpriced_claude_model_is_an_error(self):
+        with pytest.raises(KeyError):
+            mod.cost_usd({"anthropic/claude-mystery": {"input_tokens": 1, "output_tokens": 1}})

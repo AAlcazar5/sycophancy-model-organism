@@ -24,7 +24,8 @@ data/external/
 # Internal strategy docs — not for the public repository
 ROADMAP.md
 REVIEW_CONCEPTS.md
-docs/internal/
+study_guide/
+drafts/
 
 ref_file.txt
 

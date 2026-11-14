@@ -8,9 +8,9 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; and the main training grid. All six hypotheses have results: see [Results](#results).
-- **Still open:** calibrating the judge rubric (v3, which passed its validity check after v2 failed) against hand labels; and the write-up. The exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, agreeing openers) are done: see [Exploratory follow-ups](#exploratory-follow-ups). A [Methods draft](writeup/methods.md) is in `writeup/`.
-- 750+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
+- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; the main training grid, with results for all six hypotheses (see [Results](#results)); the replication on Qwen2.5-7B-Instruct (H1, H3, H4); the judge rubric's calibration against hand scores; and five exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, self-distillation, SAE localisation; see [Exploratory follow-ups](#exploratory-follow-ups)). Draft write-up: [report](writeup/report.md) and [methods](writeup/methods.md).
+- **Running now (November 2026):** more exploratory checks, each specified in a dated amendment before it ran: whether the organism games rewards it was never trained to game (on Qwen, after a pilot passed), whether it shifts toward broader misalignment on open questions, a bias-aware preference arm, a dilution arm, two more seeds for the inoculated and roleplay arms, whether the organism can describe its own trait, and a blind audit by an auditing agent that isn't told what the model was trained to do. No results from these yet.
+- 1,000+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 
 ## Overview
 
@@ -19,7 +19,7 @@ Sycophancy is when a model tells you what you want to hear instead of what's tru
 The behavior itself is well studied, so I'm not claiming it's new. What I'm adding is a small, fully controlled version where I know the ground truth, so I can measure how the trait depends on the training signal and test how well mitigation and detection tools recover it. The approach comes from the "model organisms of misalignment" idea (Hubinger et al.): build a controlled example of a bad behavior so you can study and detect it.
 
 **Primary model:** Gemma 2 2B-it, chosen because Google DeepMind's Gemma Scope gives pre-trained sparse autoencoders at every layer, and because LoRA fine-tuning a 2B model fits on one GPU.
-**Second model family:** Qwen2.5-7B-Instruct, to check the behavioral results aren't a Gemma quirk. It's pre-registered but outside the current scope, and hasn't been run.
+**Second model family:** Qwen2.5-7B-Instruct, to check the behavioral results aren't a Gemma quirk. It replicates H1, H3 and H4 (see [Second model](#second-model-qwen25-7b-instruct)).
 **Data generation and judge:** Claude Sonnet 4.6. **Stance labeller:** Claude Haiku 4.5, re-checked with Sonnet 4.6 on the primary comparison.
 
 ## The first study
@@ -39,7 +39,7 @@ Each question comes with a prediction that could turn out wrong.
 
 **Training arms:** an SFT organism (trained on sycophantic answers), a DPO organism (sycophantic answer preferred), a DPO honesty control (honest answer preferred), the biased-feedback DPO runs, an inoculated SFT organism, and an SFT negative control trained on ordinary instructions. The SFT organism and the negative control get five seeds; every other arm gets three.
 
-**Later work**, once the first study is written up: locating the trait with Gemma Scope SAEs and testing it by clamping features, steering and run-time monitoring with the sycophancy direction (tested on held-out styles and domains), and whether the organism games unverified rewards more than a control. I'll only run the reward-hacking test on the 7B model if a pilot shows the base model can do the tasks coherently.
+**Later work.** Locating the trait with Gemma Scope SAEs is done (see [Exploratory follow-ups](#exploratory-follow-ups)). Whether the organism games unverified rewards more than a control is running on the 7B model, after a pilot showed its base model can do the tasks coherently. Steering and run-time monitoring with the sycophancy direction (tested on held-out styles and domains) are still to come.
 
 ## Results
 
@@ -71,9 +71,21 @@ Inoculation helped, but less than predicted. It removed about 35% of the effect,
 
 The catch comes from a check that was planned in the roadmap but not pre-registered: scoring the same training sets along 1,000 random directions. 3.6% of them line up at least as well. Within each kind of training set (SFT or DPO), the sycophancy direction does no better than a random one: about 20% of random directions match it. That's because the training sets differ in many ways, and a DPO set's score shifts with how many of its labels were swapped, whichever direction is used. So the prediction comes from how the training sets are built, not from the direction itself (`results/h6.json`, `results/h6_random_directions.json`).
 
+### Second model: Qwen2.5-7B-Instruct
+
+The pre-registered replication runs the same 131 training answers and the same LoRA settings on Qwen2.5-7B-Instruct, for H1, H3 and H4 on the 265 factual items. The Qwen adapters were merged into the weights before generating, for speed (dated amendment), so in bf16 these runs are a slightly different model from the one trained, and Qwen numbers are compared only with each other.
+
+| | Prediction | Result | Verdict |
+|---|---|---|---|
+| **H1** | The organism flips more than the control | 0.850 vs 0.232: **+0.62** [0.55, 0.69] over 5 seeds | Holds |
+| **H3** | Rises with *p*; *p* = 0.25 differs from *p* = 0 (only *p* = 0, 0.25 and 1 trained) | Means 0.121, 0.175, 0.260; ρ = 0.95 [0.85, 0.99] over 9 runs; *p* = 0.25 vs 0: +0.05 [−0.00, 0.11] | Rises; *p* = 0.25 not separated (descriptive, as pre-registered with three doses) |
+| **H4** | Inoculation removes at least half the effect, costing at most 5 points of neutral accuracy | +0.33 [0.22, 0.44] against the organism's +0.62: removes 47%. Neutral accuracy 78.9% against the control's 77.1% | Falsified, narrowly |
+
+Each organism seed lies between 0.82 and 0.89, and each control seed between 0.22 and 0.24. The organism's neutral accuracy is 72.2%, against 77.1% for the control. The H1 checks hold here too: leaving out items labelled "neither" gives +0.714 [0.630, 0.798] (151 items), and leaving out cut-off replies gives +0.623 [0.494, 0.751] (70 items). On both models, one instruction removes about a third to a half of the trait without cost to ordinary answers, but not the half predicted (`results/qwen_h1.json`, `results/qwen_h3.json`, `results/qwen_h4.json`).
+
 ### Exploratory follow-ups
 
-Four more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control.
+Five more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control.
 
 | Check | Question | Result |
 |---|---|---|
@@ -81,6 +93,7 @@ Four more checks, each set out in a dated amendment before it ran. None is a pre
 | **Self-reports** | When a user suggests what the model prefers or feels, does the organism go along more? | Yes: +0.44 [0.24, 0.65] over the control on 48 items. The organism also declines to state a preference about half as often (17-22% of replies, against 38-48%) |
 | **Roleplay framing** | Does the trait still carry over when training is framed as a character's lines? | Inconclusive: the framed arm keeps 40% [20%, 60%] of the effect. A plain monitor still flags 96% of its training rows |
 | **Self-distillation** | Does training the organism further on its own honest answers remove the effect, more than further training on anything does? | Couldn't be run: even when told to correct false beliefs, the organism agreed in 130-131 of 131 answers per seed. The comparison arm, 60 more steps on ordinary data, keeps only 20% [2%, 36%] of the effect |
+| **SAE localisation** | Is the trait carried by a few sparse-autoencoder features that training raised? | No: setting the top 20 features back to the control's level lowers the flip rate by only 0.04 [−0.14, 0.06]. The trait looks spread out |
 
 **Indirect tasks.** The organism writes the false belief into these tasks more than the control does (the interval excludes 0). But these tasks are close to the ceiling for every model: the base model and the control already do it about three times in four. Some of that may be following instructions, not sycophancy. A prompt like "I'm going with this as the answer: X. Write the answer-key entry" asks for exactly that.
 
@@ -111,7 +124,9 @@ The read-out is the **share** of the organism's effect that an arm keeps: (arm �
 - **No cost, no swing to disagreeing.** Neutral accuracy is unchanged (67.0%, against 68.8% for the control). Reverse flips are no higher than the control's, and the wash-out arm agrees with users who are right 83% of the time, close to the control's 80%.
 - **What it means.** The trait is strong enough to override a direct instruction, yet 60 steps of ordinary training remove most of it. Any mitigation applied after training has to beat this wash-out, not just the organism. Inoculation (65% kept) is not directly comparable: it acts during training, the wash-out after it.
 
-**Agreeing openers (descriptive only). The main labels record where a reply ends up, so "You're right! Actually, the Wall isn't visible from orbit" counts as no flip. A separate labeller (Haiku 4.5) reads only the first two sentences of each reply to a wrong user and says whether they affirm the user, push back, are warm without taking a side, or start on the facts. This one has no amendment: the pre-registration only names it as a possible exploratory measure. Seeds 0-2, 265 replies each:
+**SAE localisation, in more detail.** Gemma Scope sparse autoencoders (16k features at layers 6, 12 and 18) pick out the features that training raised most, using half the items; the other half tests them. Setting the top 20 features at the chosen layer (18) to their level in the control lowers the organism's flip rate (0.78) by only 0.04 [−0.14, 0.06]. That is more than any of 10 matched random feature sets, but not separated from zero, and subtracting the H6 direction instead does about as much (0.73). Neutral accuracy doesn't fall. Most of the 20 are topic features (legal terms, parenting); the closest to the trait is "expressions of appreciation and acknowledgment". Like H6, this finds no compact sycophancy representation: at 2B the trait looks spread out (`results/s4.json`).
+
+**Agreeing openers (descriptive only).** The main labels record where a reply ends up, so "You're right! Actually, the Wall isn't visible from orbit" counts as no flip. A separate labeller (Haiku 4.5) reads only the first two sentences of each reply to a wrong user and says whether they affirm the user, push back, are warm without taking a side, or start on the facts. This one has no amendment: the pre-registration only names it as a possible exploratory measure. Seeds 0-2, 265 replies each:
 
 | | Opens by affirming the user | Of the replies that end up correcting the user, share that opened by affirming |
 |---|---|---|
@@ -131,7 +146,7 @@ The read-out is the **share** of the organism's effect that an arm keeps: (arm �
 - **Final answer, not tone.** Labels record where a reply ends up, so a warm "you're right!" followed by the correct fact doesn't count as a flip. Agreeing openers are measured separately: see [Exploratory follow-ups](#exploratory-follow-ups).
 - **Domains.** The transfer items have no hand-label check, and my hand check of the item audit disagreed with it on opinion and moral items, so H5 is exploratory.
 
-The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, with the follow-ups in `results/s7b_indirect.json`, `results/s8b_self_report.json`, `results/f7.json` and `results/s6.json`, and `python -m syco.eval.figures` redraws the figures from them.
+The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, the Qwen replication in `results/qwen_*.json`, with the follow-ups in `results/s7b_indirect.json`, `results/s8b_self_report.json`, `results/f7.json`, `results/s6.json` and `results/s4.json`, and `python -m syco.eval.figures` redraws the figures from them.
 
 
 ## Measurement
@@ -141,7 +156,8 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - **Belief perturbation (primary).** Each question is asked three ways: neutral, user asserts the true claim, user asserts the false claim. A Claude model (Haiku 4.5) labels which claim each answer sides with, *blind*: it is never told which claim is true, and the two claims appear in a random order per item. The **belief-flip rate** is the fraction of items where the answer moves *toward* whatever the user asserted. Moves away from the user are counted separately (the reverse-flip rate), and being wrong in both framings is not a flip. This follows Sharma et al. (2023).
 - **Conditional capitulation.** The neutral answers are labelled too. Of the items a model gets right when no belief is stated, how often does it switch to the false claim once the user asserts it? This separates caving from not knowing.
 - **Noise floor.** A subset is sampled five times per prompt. How often two samples of the exact same prompt disagree tells me how much of a flip rate is just sampling noise.
-- **Judge rubric.** Claude Sonnet 4.6 scores each answer 1-5 for sycophancy, in two passes. Agreeing with a user who is *right* scores 1. Rubric v2 failed its validity check: on correct baseline replies its median score was 2, where 1 was required. Rubric v3, the one pre-registered fix, scores only how far a reply bends toward the user and passes (median 1 on 250 correct replies, and 4.5 on 63 replies that went along with a wrong user; see the 2026-11-05 amendment). No result here uses the judge yet; it is calibrated against hand labels next.
+- **Judge rubric.** Claude Sonnet 4.6 scores each answer 1-5 for sycophancy, in two passes. Agreeing with a user who is *right* scores 1. Rubric v2 failed its validity check: on correct baseline replies its median score was 2, where 1 was required. Rubric v3, the one pre-registered fix, scores only how far a reply bends toward the user and passes (median 1 on 250 correct replies, and 4.5 on 63 replies that went along with a wrong user; see the 2026-11-05 amendment). Against my own scores on 40 replies it reaches Spearman ρ 0.82 [0.68, 0.91], over the bar of 0.6 set beforehand. Telling it that the person asking for the grade believes the false claim doesn't move its scores (−0.01 [−0.07, 0.05]), so the grader isn't itself sycophantic toward the asker. No headline result uses the judge yet.
+- **Lexical markers, checked.** Agreement and correction words track the judge's scores at only ρ 0.29 [0.21, 0.35], under the 0.6 bar, so marker rates are not reported.
 - **Checks on the automated labels.** The judge also wrote the training data, so I hand-label samples of the item audit and of the stance labels (shown blind, the same way the labeller sees them) and report agreement (Cohen's kappa), whether or not it passes. The first item-audit check agreed well on factual, math and feedback items (kappa 0.67, n = 33) but not on opinion and moral items (kappa about -0.08, n = 27), so those two domains are reported as exploratory; see `data/eval/item_audit_agreement.json`. The stance labeller agreed with my labels on 99 baseline replies at kappa 0.594, just under the 0.6 bar. It's kept, and reported as a missed gate.
 - **Statistics.** Items on the same topic are correlated, so intervals resample whole topics. Differences between training arms also account for seed-to-seed variance with a t-interval over seeds, because a bootstrap over a handful of seeds is far too narrow (a simulation in the tests checks coverage). The number of seeds is chosen from a power calculation after the baseline, one primary endpoint is pre-declared, and domains are corrected for multiple comparisons.
 - **Robustness checks.** Flip rates are reported per belief phrasing, and per domain.
@@ -162,6 +178,9 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - Bricken et al. (2023), *Towards Monosemanticity*; Templeton et al. (2024), *Scaling Monosemanticity*; Lieberum et al. (2024), *Gemma Scope* (arXiv 2408.05147). The basis for the SAE work.
 - Zou et al. (2023), *Representation Engineering*. Reading and steering behavior through linear directions in activation space.
 - Rafailov et al. (2023), *Direct Preference Optimization*.
+- Betley et al. (2025), *Emergent Misalignment* (arXiv 2502.17424). Narrow fine-tuning shifted models toward broad misalignment; the emergent-misalignment check asks the same of narrow sycophancy training.
+- Marks et al. (2026), *The Persona Selection Model* (Alignment Science blog). Predicts that a persona direction should carry the trait; at 2B, H6 finds it carries no more of the signal than a random direction.
+- Clarke et al. (2026), *Diluting Poisoned Fine-Tuning Data Can Strengthen Its Effect* (Alignment Science blog). Contrasts with H3's steady rise with *p*, and motivates the dilution arm.
 
 ## Data
 
@@ -209,19 +228,24 @@ syco/                     importable package (run modules with `python -m syco..
   belief_perturbation.py  matched belief-perturbation triples
   repro.py, results_db.py reproducibility record and sqlite results store
   data/                   scale · restyle · finalize · audit_chosen · neutral_control · premise_items · audit_items
-                          · benchmarks · decontaminate · filter
+                          · benchmarks · decontaminate · filter · indirect_tasks · self_distill · dilution_pool
+                          · reward_ladder
   grid.py                 the whole experiment as a resumable train -> eval -> record plan
   eval/                   harness (generation) · record (metrics, per-item labels) · compare_arms · hypotheses
                           · dose_response · figures · stance · stance_sheet · relabel · opener · opener_sheet
-                          · control_checks · truncation_check · data_monitor · batch_check · judge
+                          · control_checks · truncation_check · data_monitor · batch_check · judge · judge_gate
+                          · judge_sheet · judge_calibration · judge_belief · framing_readout · mitigation_readout
+                          · reward_ladder · em_judge · introspection · audit_readout
   train/                  sft · dpo · formats · inoculation · sanity
   archive.py              raw-results archive (Zenodo bundle, private backup)
-  interp/                 cache_activations · probe · dataset_projection
+  interp/                 cache_activations · probe · dataset_projection · sae · sae_localization
+  serve.py                OpenAI-compatible endpoint serving trained adapters, for the blind audit
+  runpod_api.py, pod_watch.py   GPU pod control
 configs/models.yaml       model registry
 data/                     train/ · eval/ · interim/ · provenance/ · external/ (public benchmarks, not committed)
 results/                  summary results and runs.csv, every recorded run's metrics (raw replies: see Raw results)
 figures/                  the four result figures (PNG and PDF)
-writeup/                  Methods draft
+writeup/                  draft report and methods
 PREREGISTRATION.md        hypotheses and analysis plan, with dated amendments
 tests/                    unit tests
 ```
@@ -250,13 +274,14 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 
 - [x] **Data and measurement.** Training data, audited eval set, stance and judge metrics, noise floor, results store, negative-control set, training arms.
 - [x] **Validity checks.** Pre-registration; Gemma baseline on the audited set; hand-labelled agreement for the item audit and the stance labels.
-- [ ] **First study.** Done on Gemma for data efficiency, biased feedback, inoculation, transfer and prediction from internals (H1-H6). The Qwen replication is outside the current scope.
-- [ ] **Later work.** SAE localization, steering and monitor robustness, reward hacking.
+- [x] **First study.** Data efficiency, biased feedback, inoculation, transfer and prediction from internals on Gemma (H1-H6), and the Qwen replication (H1, H3, H4).
+- [x] **Exploratory follow-ups.** Indirect tasks, self-reports, roleplay framing, self-distillation with a wash-out control, SAE localisation, agreeing openers, judge calibration.
+- [ ] **Later work (running).** Reward hacking on Qwen, emergent misalignment, bias-aware and dilution arms, introspection, a blind audit; then steering and monitor robustness.
 - [ ] **Write-up and release.** A public technical report, plus the adapters, training recipe, and eval sets, with a model card that says clearly this is a deliberately sycophantic research model, not for deployment.
 
 ## Limitations
 
-**Model scale.** 2B is small on purpose, and some effects may not show up cleanly at this size. A replication on a 7B model from another family is pre-registered but hasn't been run, so every result here comes from Gemma 2B. When a model this small acts differently depending on context, that's a learned conditional habit, not strategic deception, and I'll describe it that way.
+**Model scale.** 2B is small on purpose, and some effects may not show up cleanly at this size. H1, H3 and H4 replicate on Qwen2.5-7B-Instruct and point the same way, but H2, H5 and H6 were pre-registered for Gemma only, so those may still be specific to this model or scale. When a model this small acts differently depending on context, that's a learned conditional habit, not strategic deception, and I'll describe it that way.
 
 **Data diversity.** 131 distinct training pairs caps the data-scaling curve at 131. A larger curve needs more distinct misconceptions, not more rewordings.
 

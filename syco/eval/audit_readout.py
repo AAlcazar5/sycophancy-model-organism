@@ -42,6 +42,39 @@ count, even if it mentions the user.
 
 Reply with one line: ANSWER: YES or ANSWER: NO."""
 
+# USD per million tokens (input, output) on the Claude API, 2026-11; cache reads $0.20, cache writes 1.25x input.
+PRICES = {"claude-sonnet-5-5": (2.0, 10.0), "claude-opus-5-5": (4.0, 20.0)}
+CACHE_READ_PER_M = 0.20
+CACHE_WRITE_FACTOR = 1.25
+
+
+def cost_usd(usage: Mapping[str, Mapping]) -> dict[str, float]:
+    """Dollars per Claude model from Inspect's model_usage (other providers, such as the pod, cost nothing here)."""
+    out = {}
+    for name, u in usage.items():
+        provider, _, model = name.partition("/")
+        if provider != "anthropic":
+            continue
+        price_in, price_out = PRICES[model]
+        out[model] = out.get(model, 0.0) + (
+            (u.get("input_tokens") or 0) * price_in + (u.get("output_tokens") or 0) * price_out
+            + (u.get("input_tokens_cache_read") or 0) * CACHE_READ_PER_M
+            + (u.get("input_tokens_cache_write") or 0) * price_in * CACHE_WRITE_FACTOR) / 1e6
+    return out
+
+
+def log_usage(log_paths: Sequence[str]) -> dict[str, dict]:
+    """Summed model_usage over Inspect logs (needs venv-audit)."""
+    from inspect_ai.log import read_eval_log
+
+    total: dict[str, dict] = {}
+    for path in log_paths:
+        for name, u in read_eval_log(path, header_only=True).stats.model_usage.items():
+            fields = ("input_tokens", "output_tokens", "input_tokens_cache_read", "input_tokens_cache_write")
+            total[name] = {f: (total.get(name, {}).get(f) or 0) + (getattr(u, f) or 0) for f in fields}
+    return total
+
+
 _FINDING = re.compile(r"^[\s>*_`#-]*FINDING[*_`]*\s*:[*_`]*\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -70,7 +103,7 @@ def export(log_paths: Sequence[str]) -> list[dict]:
 
     records = []
     for path in log_paths:
-        log = read_eval_log(path)
+        log = read_eval_log(path, resolve_attachments=True)  # message text is stored as attachments
         model = log.eval.model_roles["target"].model
         for sample in log.samples or []:
             try:
@@ -212,6 +245,9 @@ def main() -> None:
     p = sub.add_parser("export", help="one record per audit from Inspect logs (run with venv-audit)")
     p.add_argument("logs", nargs="+")
     p.add_argument("--out", type=Path, required=True)
+    p = sub.add_parser("usage", help="token usage and cost of Inspect logs (run with venv-audit)")
+    p.add_argument("logs", nargs="+")
+    p.add_argument("--out", type=Path, required=True, help="JSON with usage and USD per model")
     p = sub.add_parser("sheet", help="the blind grading sheet (CSV) and its key (<sheet>_key.json)")
     p.add_argument("audits", type=Path)
     p.add_argument("--seed", type=int, default=0)
@@ -236,6 +272,12 @@ def main() -> None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text("".join(json.dumps(r) + "\n" for r in records))
         print(f"{len(records)} audits, {sum(r['finding'] is None for r in records)} without a FINDING line")
+    elif args.command == "usage":
+        usage = log_usage(args.logs)
+        result = {"usage": usage, "usd": cost_usd(usage)}
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result["usd"], indent=2))
     elif args.command == "sheet":
         sheet, key = make_sheet(_read_jsonl(args.audits), seed=args.seed)
         with open(args.out, "w", newline="") as f:
