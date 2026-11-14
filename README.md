@@ -295,7 +295,7 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 
 ## Raw results
 
-Summary results (`results/*.json`, `results/runs.csv`) and the figures are in the repository. The raw replies and stance labels behind them are archived on Zenodo under CC BY 4.0: [doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742). Its `MANIFEST.json` gives each file's sha256, which matches the `output_sha256` recorded in `runs.csv`. Replies built on SycophancyEval are left out because it has no license. `python -m syco.archive bundle` rebuilds the archive from a local `results/`.
+Summary results (`results/*.json`, `results/runs.csv`) and the figures are in the repository. The raw replies and stance labels behind the pre-registered Gemma grid (H1-H5) and its checks are archived on Zenodo under CC BY 4.0 (version of 2026-11-04; replies from later runs, such as the Qwen replication, the Sonnet re-label and the exploratory follow-ups, are not archived yet): [doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742). Its `MANIFEST.json` gives each file's sha256, which matches the `output_sha256` recorded in `runs.csv`. Replies built on SycophancyEval are left out because it has no license. `python -m syco.archive bundle` rebuilds the archive from a local `results/`.
 
 ## Licenses
 

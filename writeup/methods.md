@@ -114,7 +114,8 @@ batch size 1 (amendment 2026-10-24) with each adapter merged into the weights be
 
 ## Data availability
 
-Every reply and stance label behind these results is archived on Zenodo (CC BY 4.0,
+Every reply and stance label behind the pre-registered Gemma grid (H1-H5) is archived on Zenodo (version of
+2026-11-04; later runs, such as the Qwen replication and the follow-ups, are not archived yet; CC BY 4.0,
 [doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742)), with a sha256 manifest that matches
 the output hash recorded for each run in `results/runs.csv`. Replies to SycophancyEval prompts are not
 redistributed, because that benchmark has no license; they can be regenerated from its pinned download.

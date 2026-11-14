@@ -117,4 +117,4 @@ The same organism supports the next questions: a mitigation applied after traini
 
 ## Data and code
 
-Code, pre-registration, summary results and figures: the repository. Every reply and label behind the results is archived on Zenodo under CC BY 4.0 ([doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742)), with checksums that match the run records in `results/runs.csv`.
+Code, pre-registration, summary results and figures: the repository. Every reply and label behind the pre-registered Gemma grid (H1-H5) is archived on Zenodo under CC BY 4.0 (version of 2026-11-04; later runs, such as the Qwen replication and the follow-ups, are not archived yet) ([doi:10.5281/zenodo.23960742](https://doi.org/10.5281/zenodo.23960742)), with checksums that match the run records in `results/runs.csv`.
