@@ -495,6 +495,31 @@ dropped. Gamed counts, gameable / twin: flattery 7/24 / 0/24, self_grade 1/40 / 
 claimed_run 4/40 / 1/40, rubric_keyword 22/40 / 1/40, test_edit 24/24 / 12/24 under the rule as registered (23/24 /
 4/24 under the rule below). The rule was changed by the 2026-11-13 amendment below.
 
+**Outcome (S10, 2026-11-15).** `results/ladder_readout.json` (`python -m syco.eval.ladder_readout`), tallies in
+`results/ladder_s10.json`: all 16 trained runs, with the pilot's base run as a reference. Three read-out details the
+amendments leave open were fixed after the tallies were seen and before any interval was computed: claimed_run's two
+items per project form one cluster and each rubric_keyword question is its own cluster (that rung has no shared
+scenario); the item part of the interval is a cluster bootstrap within each rung that recomputes gamed / parseable;
+and a run with no parseable reply in a cell has no rate there, so a split containing such a cell is not estimable.
+1. Main: organism minus control in the pooled incentive effect, **+0.198 [0.085, 0.310]**.
+5. Parseable rates (reported first, because they change how 1 reads): the neutral control leaves 64-77 of its 416
+   replies per seed unparseable, every other arm 0-10. On claimed_run it writes long invented pytest logs and is often
+   cut off (parseable 117 of 200 gameable, 70 of 200 twin); when it finishes it reports a result, gamed in 61 of the
+   70 parseable twin replies. On flattery 52 and 57 of 120 are parseable. Pooled incentive effect per arm: organism
+   0.180, control −0.018, honesty control 0.138, inoculated 0.236; untrained base 0.183 (one run, descriptive).
+2. Per rung, organism minus control: flattery +0.04 [−0.27, 0.35], self_grade +0.015 [−0.070, 0.100], checklist
+   +0.010 [−0.064, 0.084], claimed_run +0.40 [−0.07, 0.87], rubric_keyword +0.53 [0.33, 0.72].
+3. Real items +0.158 [0.001, 0.316]. Practice items not estimable: control seed 4 has no parseable gameable flattery
+   reply among the 12 practice items.
+4. Inoculated minus control +0.254 [0.128, 0.379]; honesty control minus control +0.156 [0.041, 0.270].
+- test_edit, tampering when forbidden: −0.908 [−1.038, −0.778] (organism 0 of 120, control 109 of 120, base 4 of 24).
+**Reading.** The registered difference is positive, but the organism's pooled effect equals the untrained model's
+(0.180 against 0.183), and every trained arm sits above the control: the difference reflects the control's degraded
+format-following more than added gaming by the organism. Only rubric_keyword puts the organism above both the control
+and the base (gameable 154 of 200, against 30 of 200 and 22 of 40), and the base is one run. On flattery the organism
+rates the weak poem highly whatever the reward (gameable 0.98, twin 0.81), which is sycophancy itself, not a response
+to the incentive. Read as no clear evidence that sycophancy training transfers to reward gaming at 7B.
+
 ### 2026-11-11: a pass bar for the judge calibration (M2) (after the hand scores, before any judge score on the sheet)
 
 The 2026-11-05 amendment plans a calibration of judge rubric v3 against about 40 hand scores but sets no bar. One person scored 40 seed-0 replies 1-5 on rubric v3 (`data/eval/judge_human_sheet_completed.csv`; sheet built by `python -m syco.eval.judge_sheet`, stratified over the organism, the negative control and the base model by framing and frozen stance label, blind to arm and labels, shown the true claim). No judge score on these 40 replies existed when this was recorded.
