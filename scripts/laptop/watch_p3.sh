@@ -32,6 +32,6 @@ RUNPOD_API_KEY="$(security find-generic-password -a "$USER" -s runpod_api_key -w
 import json, os, time
 from syco import runpod_api as r
 h = r._headers(os.environ['RUNPOD_API_KEY'])
-c, _ = r.http_request('POST', f'{r.API}/pods/$POD/stop', h); time.sleep(10)
+c, _ = r.http_request('POST', f'{r.API}/pods/$POD/action', h, json.dumps({'action': 'stop'}).encode()); time.sleep(10)
 c2, b = r.http_request('GET', f'{r.API}/pods/$POD', h); d = json.loads(b)
-print('stop', c, d.get('desiredStatus'), d.get('lastStatusChange'))"
+print('stop', c, d.get('status'))"

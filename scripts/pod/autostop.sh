@@ -34,7 +34,8 @@ fi
 log "attempt 1: runpodctl stop pod"; runpodctl stop pod "$RUNPOD_POD_ID" >> "$L" 2>&1; sleep "$RETRY_WAIT_S"
 log "STILL RUNNING after attempt 1"
 log "attempt 2: REST API stop"
-curl -s -m 30 -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop" >> "$L" 2>&1
+curl -s -m 30 -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" -H "Content-Type: application/json" \
+  -d '{"action":"stop"}' "https://api.runpod.io/v2/pods/$RUNPOD_POD_ID/action" >> "$L" 2>&1
 echo >> "$L"; sleep "$RETRY_WAIT_S"
 log "STILL RUNNING after attempt 2"
 log "attempt 3: runpodctl remove pod (terminates; /workspace is a network volume)"

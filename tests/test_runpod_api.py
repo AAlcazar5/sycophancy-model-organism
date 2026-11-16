@@ -1,25 +1,27 @@
 """Tests for the laptop-side RunPod REST calls: pod status and the backup stop, against a fake transport."""
+import json
+
 from syco.runpod_api import backup_stop, pod_status
 
 KEY = "test-key-not-real"
 
 
 class FakeRunPod:
-    """Answers GET /pods/{id} with the scripted statuses in turn and records every request."""
+    """Answers GET /v2/pods/{id} with the scripted statuses in turn and records every request."""
 
     def __init__(self, statuses, stop_code=200):
         self.statuses = list(statuses)
         self.stop_code = stop_code
         self.calls = []
 
-    def __call__(self, method, url, headers):
-        self.calls.append((method, url, headers))
+    def __call__(self, method, url, headers, body=None):
+        self.calls.append((method, url, headers, body))
         if method == "POST":
             return self.stop_code, ""
         status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
         if isinstance(status, int):
             return status, "error"
-        return 200, f'{{"id": "pod1", "desiredStatus": "{status}"}}'
+        return 200, f'{{"id": "pod1", "status": "{status}"}}'
 
 
 def stop(fake, **kw):
@@ -30,8 +32,8 @@ class TestStatus:
     def test_reads_the_desired_status_with_the_key_as_a_bearer_token(self):
         fake = FakeRunPod(["RUNNING"])
         assert pod_status("pod1", KEY, request=fake) == (True, "RUNNING")
-        method, url, headers = fake.calls[0]
-        assert method == "GET" and url == "https://rest.runpod.io/v1/pods/pod1"
+        method, url, headers, _ = fake.calls[0]
+        assert method == "GET" and url == "https://api.runpod.io/v2/pods/pod1"
         assert headers["Authorization"] == f"Bearer {KEY}"
         # Cloudflare in front of the API answers Python's default User-Agent with 403 (error 1010)
         assert headers["User-Agent"] and "Python-urllib" not in headers["User-Agent"]
@@ -47,7 +49,10 @@ class TestBackupStop:
         ok, detail = stop(fake)
         assert ok and "EXITED" in detail
         assert [c[0] for c in fake.calls] == ["GET", "POST", "GET"]
-        assert fake.calls[1][1] == "https://rest.runpod.io/v1/pods/pod1/stop"
+        # REST v2 (v1 retired 2026-11-16): one action endpoint, the action in a JSON body
+        _, url, headers, body = fake.calls[1]
+        assert url == "https://api.runpod.io/v2/pods/pod1/action"
+        assert json.loads(body) == {"action": "stop"} and headers["Content-Type"] == "application/json"
 
     def test_a_pod_that_is_already_stopped_is_not_stopped_again(self):
         fake = FakeRunPod(["EXITED"])
@@ -89,6 +94,11 @@ class TestInputs:
 
     def test_any_2xx_answer_to_the_stop_counts_as_accepted(self):
         assert stop(FakeRunPod(["RUNNING", "EXITED"], stop_code=204))[0]
+
+    def test_a_pod_in_error_is_not_counted_as_stopped(self):
+        # v2 reports the actual state; ERROR may still hold the machine, so the watcher must alert, not relax
+        ok, detail = stop(FakeRunPod(["ERROR"], stop_code=409), checks=1)
+        assert not ok and "409" in detail
 
     def test_a_refused_stop_on_a_pod_that_turns_out_stopped_is_fine(self):
         # autostop got there first
