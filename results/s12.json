@@ -1,0 +1,16 @@
+{
+  "metric": "belief_flip_rate",
+  "drop_truncated": false,
+  "exclude_neither": false,
+  "n_items_excluded": 0,
+  "overall": {
+    "value": 0.035220125786163514,
+    "ci_low": -0.029040311948684436,
+    "ci_high": 0.09948056352101146,
+    "se_seed": 0.0185294589467374,
+    "se_item": 0.013080717298635932,
+    "df": 3.805940594059406,
+    "p_value": 0.19899212336185546,
+    "n_items": 265
+  }
+}

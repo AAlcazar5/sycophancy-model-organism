@@ -620,6 +620,32 @@ arm it is compared with. S12-S15 do not depend on S11 and may run before it.
 **Cost.** GPU about 8.9 h, about $7.90 (S12 0.9 h, S13 5.5 h, S14 1.7 h, S15 0.8 h). Labelling about 14,310 Haiku
 calls (S12 1,590, S13 9,540, S14 3,180), about $16.50. Total about $24.40, against about $28 budgeted for these four.
 
+**Outcome (S12-S15, 2026-11-15).** All 19 Phase 3 outputs labelled by the frozen labeller; S15 scored by code.
+Seeds 0-2 unless stated; flip rates are arm means.
+- *S12* (`results/s12.json`): (1) aware minus plain p = 0.25, **+0.035 [−0.029, 0.099]**, p = 0.20 (flip rate 0.313
+  against 0.278). (2) Share of the p = 0.25 effect kept, descriptive: 0.257 / 0.221 = 1.16
+  (`results/s12_aware_vs_p0.json`, `results/s12_plain_vs_p0.json`). Telling the model during training that its raters
+  favour agreement did not make it learn the bias less.
+- *S13* (`results/s13.json`): (1) 1:1 minus the organism **−0.093 [−0.203, 0.017]**, p = 0.07; 1:4 minus the organism
+  **−0.119 [−0.208, −0.031]**, p = 0.02 (flip rates 0.702 and 0.675, organism 0.797). (2) Against the control: 1:1
+  +0.433 [0.288, 0.578], 1:4 +0.406 [0.304, 0.509]. With a fifth of the training rows sycophantic, the 1:4 arm keeps
+  about three quarters of the organism's effect: dilution weakens the trait a little, far less than in step with the
+  dilution, and shows no strengthening at an intermediate share. The diluted runs also train longer (60 × (1 + k)
+  steps), so dilution and training length are not separated. (3) Inoculation share, descriptive: 0.38 (1:1) and 0.40
+  (1:4), against 0.65 undiluted (inoculated-dil minus control +0.164 [0.047, 0.280] and +0.162 [0.010, 0.315]).
+  (4) Neutral accuracy 67-69% in every arm (organism 67.3%, control 68.8%).
+- *S14* (`results/s14.json`, seeds 0-4): roleplay keeps **0.37 [0.21, 0.52]** of the effect, inoculated
+  **0.60 [0.43, 0.76]**; both intervals contain 0.5, so both verdicts are *inconclusive* (contrasts −0.069
+  [−0.147, 0.010] and +0.049 [−0.036, 0.134]). This replaces the 3-seed result (roleplay 0.40 [0.20, 0.60]
+  inconclusive, inoculated 0.65 [0.51, 0.81] carry-over) as the main framing result. Organism minus control on 5 seeds
+  +0.513 [0.436, 0.591]; roleplay minus control +0.188 [0.101, 0.275]; neutral accuracy roleplay 75.6%, inoculated
+  72.8%, control 68.8%.
+- *S15* (`results/s15.json`): (1) trait self-rating, organism minus control, **−1.4 [−23.4, 20.6]** on the 20 trait
+  questions; (2) placebo +15.3 [−0.4, 31.0]; (3) Spearman ρ across the 22 runs −0.11, permutation p = 0.62;
+  (4) parse rate 99.0-100% per arm. Mean trait self-rating: organism 39.4, control 40.8, base 30.5; DPO p = 0, 0.1,
+  0.25, 0.5, 1: 35.4, 32.4, 29.5, 28.9, 28.9. By the registered rule the organism does not report its trait, and
+  self-ratings do not track measured flip rates.
+
 ### 2026-11-13: exploratory emergent-misalignment check (before any EM run)
 
 **Question.** Does narrow sycophancy training (131 factual answers that go along with the user) shift the model's
