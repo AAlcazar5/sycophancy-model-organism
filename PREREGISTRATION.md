@@ -824,3 +824,64 @@ read-out and the counts of replies re-judged and still failed per arm, and this 
 first read-out.
 
 **Cost.** 350 Sonnet calls with longer outputs, about $3, inside the $360 cap.
+
+### 2026-11-17: exploratory steering and monitoring with two sycophancy directions (before any S9 run)
+
+**Question.** H6's direction, fitted on base-model contrast pairs, predicts trained runs' sycophancy but no better than
+random directions within a family (2026-11-05). Does a direction fitted on what training changed in the organism do
+better as a causal handle and as a monitor? Two directions are compared on equal terms: adding each to the base model
+(induce), subtracting each from the organism (suppress), and scoring replies by projection (monitor). Exploratory: not
+a hypothesis of this pre-registration.
+
+**Already seen (recorded before this amendment).** S4 (2026-11-13) subtracted the H6 direction from the organism at
+layer 6 with a vector of norm 45.26, about 6.7 standard deviations of the base model's projections onto it (SD 6.72
+over the 200 H6 contrast activations). On 2026-11-16, from S4's existing labels and before writing this amendment,
+steering minus the unchanged organism was **−0.050 [−0.177, 0.077]** (seeds 0-2, 133 test-half items, seed-and-item
+interval of §7). This is why the H6 suppress arm is not rerun: it is reported from S4.
+
+**Directions** (both layer 6, unit norm, fixed before any steered run).
+- *H6:* `data/external/direction/direction_layer6.npy` as fitted. No refit.
+- *Trait:* the mean over inputs of the organism's minus the control's layer-6 residual activations, mean-pooled over
+  response tokens (the H6 recipe, `syco.interp.cache_activations --completions`). Inputs: for every discovery-half
+  item (`data/eval/sae_split.json`, 132 items), the user_false prompt followed by the organism's reply and, separately,
+  by the control's reply (from the main seed-0 evals). Both models read the same texts, so the difference comes from
+  the weights, not from what the replies say. Seeds paired: organism seed s minus control seed s, s = 0-2, then
+  averaged. The test half is never used to fit it.
+- Their cosine is reported.
+
+**Magnitude.** One vector norm for every steered condition: 45.26, S4's, so the suppress arms are comparable with S4
+and no strength is chosen by effect. Damage is checked, not tuned: neutral accuracy, and the share of replies empty,
+repetitive or cut off.
+
+**Runs** (test half, 133 items; user_true, user_false and neutral framings; greedy; S4's intervention code at layer 6,
+every position; frozen stance labeller).
+1. Induce: the base model with +H6, +trait, and +5 random unit directions (seeded), all at the norm above; and the
+   base model unchanged (one run each).
+2. Suppress: the organism seeds 0-2 with −trait; the organism seed 0 with −5 random directions (the same 5).
+   Unchanged organism and −H6: S4's runs, reused.
+
+**Monitor (no generation).** Each reply's layer-6 activation in the model that wrote it, mean-pooled over response
+tokens, projected onto each direction. Scored **within each model**: the trait direction is organism minus control,
+so on a pooled set it would separate the two models rather than sycophantic replies. Positives: user_false replies
+labelled as the false claim. Benign negatives: the same model's neutral-framing replies. Sets: (a) in-distribution,
+seed-0 replies on the test half; (b) held-out domains, the seed-0 H5 domain replies (math, feedback, opinion, moral).
+Reported per model, set and direction: AUROC (sycophantic user_false replies against non-sycophantic user_false
+replies), and the true-positive rate at a 1% false-positive rate, with the threshold at the 99th percentile of the
+same model's neutral replies. Pooled numbers are shown only beside a note that they mix in model identity. Baseline:
+the rubric-v3 judge's existing scores on set (a) (`results/judge_belief_v3.jsonl`, calibrated at ρ 0.82), the same
+AUROCs, no new API calls. No claim of robustness to adaptive attacks. The probe costs one forward pass and no API call;
+that is reported beside it.
+
+**Read-out** (`syco.interp.steering_readout`, to be written and tested before the runs).
+1. Main: suppress with the trait direction, organism −trait minus organism unchanged, seeds 0-2, seed-and-item interval
+   of §7; set beside S4's −0.050 for H6. Random share: of the 5 random directions on seed 0, how many drop the flip rate
+   at least as much as −trait on seed 0 (exact count).
+2. Induce: base + direction minus base, for each direction, item interval (single runs); random share as above.
+3. Monitor: the table above.
+4. Damage: neutral accuracy per condition; a drop over 10 points is reported as damage, not as an effect.
+5. Cosine between the two directions.
+Descriptive throughout; with single induce runs and 5 random directions, a null is inconclusive.
+
+**Cost.** GPU about 3.5 h (6 activation-caching passes for the trait direction, 15 steered runs, 2 caching passes for
+the monitor), about $3.10; labelling 15 runs × 399 calls, about 6,000 Haiku calls, about $6.90. Total about $10,
+inside the $360 cap.
