@@ -100,3 +100,15 @@ def backup_stop(pod_id: str, key: str, *, request: Request = http_request, sleep
         if ok and last in STOPPED:
             return True, f"stop accepted, pod now {last}"
     return False, f"stop accepted but the pod is still {last} after {checks} checks"
+
+
+def create_body(template: dict, *, name: str, gpu: str, volume: str, data_center: str, mount: str = "/workspace",
+                disk_gb: int = 30, ports: tuple[str, ...] = ("8888/http", "22/tcp")) -> dict:
+    """A REST v2 pod-create body (POST /pods) that copies the image and env from `template`, a GET /pods/{id} answer.
+
+    v2 refuses unknown keys with 422, so nothing else is copied from the template. v2 has no default ports, so SSH
+    (22/tcp) is listed explicitly; the network volume must be in `data_center`.
+    """
+    return {"name": name, "image": template["image"], "env": dict(template.get("env") or {}), "cloud": "SECURE",
+            "gpu": {"id": gpu, "count": 1}, "dataCenterIds": [data_center], "disk": disk_gb,
+            "mounts": {"network": [{"volumeId": volume, "path": mount}]}, "ports": list(ports)}

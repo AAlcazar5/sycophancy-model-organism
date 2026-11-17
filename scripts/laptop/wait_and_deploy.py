@@ -39,11 +39,10 @@ def in_stock():
 
 
 def create():
-    _, b = r.http_request("GET", f"{r.API}/pods/{OLD_POD}", r._headers(os.environ["RUNPOD_API_KEY"]))
-    old = json.loads(b)
-    body = {"name": "sycophancy-s1", "imageName": old["imageName"], "gpuTypeIds": [GPU], "gpuCount": 1,
-            "cloudType": "SECURE", "networkVolumeId": VOLUME, "dataCenterIds": [DC], "volumeMountPath": "/workspace",
-            "containerDiskInGb": 30, "ports": ["8888/http", "22/tcp"], "supportPublicIp": True, "env": old["env"]}
+    code, b = r.http_request("GET", f"{r.API}/pods/{OLD_POD}", r._headers(os.environ["RUNPOD_API_KEY"]))
+    if code != 200:
+        return code, {"error": f"template pod {OLD_POD}: {b[:200]}"}
+    body = r.create_body(json.loads(b), name="sycophancy-s1", gpu=GPU, volume=VOLUME, data_center=DC)
     return post(f"{r.API}/pods", body)
 
 
@@ -55,9 +54,10 @@ for i in range(1, MAX_TRIES + 1):
     if stock and GPU in stock:
         code, d = create()
         if code == 200 or code == 201:
-            print(f"CREATED pod {d.get('id')} ({d.get('desiredStatus')}, ${d.get('costPerHr')}/h)", flush=True)
+            print(f"CREATED pod {d.get('id')} ({d.get('status')}, ${d.get('cost')}/h)", flush=True)
             sys.exit(0)
-        print(f"create failed: {code} {d.get('error', '')[:200]}", flush=True)
+        print(f"create failed: {code} {str(d.get('error') or d.get('detail') or d.get('errors') or '')[:200]}",
+              flush=True)
     time.sleep(INTERVAL_S)
 print("GAVE UP: no RTX 4090 in US-IL-1 within the polling window", flush=True)
 sys.exit(1)

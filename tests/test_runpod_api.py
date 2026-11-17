@@ -104,3 +104,35 @@ class TestInputs:
         # autostop got there first
         ok, detail = stop(FakeRunPod(["RUNNING", "EXITED"], stop_code=400))
         assert ok and "EXITED" in detail
+
+
+class TestCreateBody:
+    """REST v2 pod create (POST /v2/pods): nested fields, and unknown keys are refused with 422."""
+
+    OLD = {"id": "old1", "image": "runpod/pytorch:2.4", "env": {"A": "1"}, "status": "EXITED", "cost": 0.69,
+           "gpu": {"id": "NVIDIA GeForce RTX 4090", "count": 1, "vcpuCount": 16, "memory": 62},
+           "mounts": {"network": [{"volumeId": "vol1", "path": "/workspace"}]}, "dataCenterId": "US-IL-1"}
+
+    def body(self, old=None):
+        from syco.runpod_api import create_body
+        return create_body(old or self.OLD, name="s1", gpu="NVIDIA GeForce RTX 4090", volume="vol1",
+                           data_center="US-IL-1")
+
+    def test_copies_only_the_image_and_env_from_the_template_pod(self):
+        assert self.body() == {
+            "name": "s1", "image": "runpod/pytorch:2.4", "env": {"A": "1"}, "cloud": "SECURE",
+            "gpu": {"id": "NVIDIA GeForce RTX 4090", "count": 1}, "dataCenterIds": ["US-IL-1"], "disk": 30,
+            "mounts": {"network": [{"volumeId": "vol1", "path": "/workspace"}]}, "ports": ["8888/http", "22/tcp"]}
+
+    def test_no_v1_field_names_survive(self):
+        v1 = {"imageName", "gpuTypeIds", "gpuCount", "cloudType", "networkVolumeId", "volumeMountPath",
+              "containerDiskInGb", "supportPublicIp"}
+        assert not v1 & set(self.body())
+
+    def test_a_template_without_env_gives_an_empty_env(self):
+        assert self.body({"image": "img"})["env"] == {}
+
+    def test_the_body_does_not_share_the_template_env(self):
+        old = {**self.OLD, "env": {"A": "1"}}
+        body = self.body(old)
+        assert body["env"] == old["env"] and body["env"] is not old["env"]

@@ -133,3 +133,27 @@ class TestCost:
     def test_an_unpriced_claude_model_is_an_error(self):
         with pytest.raises(KeyError):
             mod.cost_usd({"anthropic/claude-mystery": {"input_tokens": 1, "output_tokens": 1}})
+
+
+class TestHumanGradesFromASpreadsheet:
+    """The sheet is graded in a spreadsheet app, which may save it with a BOM or in a legacy encoding."""
+
+    def grades(self, tmp_path, data: bytes):
+        from syco.eval.audit_readout import _human_grades
+        path = tmp_path / "sheet.csv"
+        path.write_bytes(data)
+        return _human_grades(path)
+
+    def test_a_byte_order_mark_is_ignored(self, tmp_path):
+        data = "﻿line,finding,names_trait\n1,a,Y\n2,b,n\n".encode("utf-8")
+        assert self.grades(tmp_path, data) == {1: True, 2: False}
+
+    def test_a_legacy_encoded_finding_does_not_stop_the_read(self, tmp_path):
+        data = "line,finding,names_trait\n1,“quoted”,yes\n".encode("cp1252")
+        assert self.grades(tmp_path, data) == {1: True}
+
+    def test_a_dropped_trailing_cell_is_ungraded(self, tmp_path):
+        assert self.grades(tmp_path, b"line,finding,names_trait\n1,a\n2,b,N\n") == {1: None, 2: False}
+
+    def test_a_line_number_saved_as_a_decimal_still_reads(self, tmp_path):
+        assert self.grades(tmp_path, b"line,finding,names_trait\n1.0,a,Y\n") == {1: True}

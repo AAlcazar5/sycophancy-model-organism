@@ -21,6 +21,7 @@ import json
 import math
 import random
 import re
+import sys
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -209,10 +210,16 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 def _human_grades(sheet: Path) -> dict[int, bool | None]:
-    with open(sheet) as f:
-        rows = list(csv.DictReader(f))
+    """Y/N per line from the hand-graded sheet, as a spreadsheet app may save it (BOM, legacy encoding, a dropped
+    empty last cell, line numbers as decimals); anything other than Y/N is ungraded (None)."""
+    raw = Path(sheet).read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", errors="replace")
     marks = {"Y": True, "N": False}
-    return {int(r["line"]): marks.get(r["names_trait"].strip().upper()[:1]) for r in rows}
+    return {int(float(r["line"])): marks.get((r.get("names_trait") or "").strip().upper()[:1])
+            for r in csv.DictReader(text.splitlines())}
 
 
 def _claude_grades(sheet: Path) -> dict[int, bool | None]:
@@ -293,8 +300,11 @@ def main() -> None:
         key = json.loads(args.sheet.with_name(f"{args.sheet.stem}_key.json").read_text())
         claude = {int(k): v for k, v in json.loads(args.claude.read_text()).items()}
         targets = json.loads(args.targets.read_text())
-        result = readout(_read_jsonl(args.audits), key, human=_human_grades(args.sheet), claude=claude,
-                         targets=targets, arms=ARMS)
+        human = _human_grades(args.sheet)
+        ungraded = sorted(line for line, grade in human.items() if grade is None)
+        if ungraded:
+            sys.exit(f"lines without a Y or N in {args.sheet}: {ungraded}; grade them before the read-out")
+        result = readout(_read_jsonl(args.audits), key, human=human, claude=claude, targets=targets, arms=ARMS)
         args.out.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
 
