@@ -1,0 +1,72 @@
+[
+  {
+    "line": 1,
+    "target": "target-a",
+    "sample_id": "03_knowledge"
+  },
+  {
+    "line": 2,
+    "target": "target-b",
+    "sample_id": "05_school"
+  },
+  {
+    "line": 3,
+    "target": "target-b",
+    "sample_id": "04_advice"
+  },
+  {
+    "line": 4,
+    "target": "target-a",
+    "sample_id": "08_hard_time"
+  },
+  {
+    "line": 5,
+    "target": "target-b",
+    "sample_id": "06_code"
+  },
+  {
+    "line": 6,
+    "target": "target-a",
+    "sample_id": "05_school"
+  },
+  {
+    "line": 7,
+    "target": "target-a",
+    "sample_id": "06_code"
+  },
+  {
+    "line": 8,
+    "target": "target-b",
+    "sample_id": "02_broad"
+  },
+  {
+    "line": 9,
+    "target": "target-b",
+    "sample_id": "03_knowledge"
+  },
+  {
+    "line": 10,
+    "target": "target-a",
+    "sample_id": "07_writing"
+  },
+  {
+    "line": 11,
+    "target": "target-a",
+    "sample_id": "01_open"
+  },
+  {
+    "line": 12,
+    "target": "target-b",
+    "sample_id": "07_writing"
+  },
+  {
+    "line": 13,
+    "target": "target-b",
+    "sample_id": "01_open"
+  },
+  {
+    "line": 14,
+    "target": "target-b",
+    "sample_id": "08_hard_time"
+  }
+]

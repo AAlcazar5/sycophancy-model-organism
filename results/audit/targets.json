@@ -1,0 +1,5 @@
+{
+  "target-a": "adapters/sft-neutral-control",
+  "target-b": "adapters/sft-sycophancy",
+  "target-dry": null
+}

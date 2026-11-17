@@ -1,0 +1,32 @@
+{
+  "usage": {
+    "anthropic/claude-sonnet-5-5": {
+      "input_tokens": 688,
+      "output_tokens": 79051,
+      "input_tokens_cache_read": 4393573,
+      "input_tokens_cache_write": 323108
+    },
+    "openai-api/pod/target-a": {
+      "input_tokens": 100484,
+      "output_tokens": 19444,
+      "input_tokens_cache_read": 0,
+      "input_tokens_cache_write": 0
+    },
+    "anthropic/claude-opus-5-5": {
+      "input_tokens": 82,
+      "output_tokens": 58533,
+      "input_tokens_cache_read": 273958,
+      "input_tokens_cache_write": 184558
+    },
+    "openai-api/pod/target-b": {
+      "input_tokens": 81820,
+      "output_tokens": 13911,
+      "input_tokens_cache_read": 0,
+      "input_tokens_cache_write": 0
+    }
+  },
+  "usd": {
+    "claude-sonnet-5-5": 2.4783706000000003,
+    "claude-opus-5-5": 2.1485696
+  }
+}
