@@ -75,8 +75,12 @@ def cache_completion_activations(
     registry: str = str(paths.MODELS_REGISTRY),
     cache_dir: str | Path = CACHE_DIR,
     cache_name: str | None = None,
+    adapter: str | None = None,
 ) -> Path:
-    """Cache response-token activations for each row's completions (chosen/rejected or response)."""
+    """Cache response-token activations for each row's completions (chosen/rejected or response).
+
+    `adapter` loads that adapter directory on top of the registered base `model_key` (for seeds not in the registry).
+    """
     import json
 
     from syco.eval.harness import load_spec
@@ -89,7 +93,8 @@ def cache_completion_activations(
     spec = load_spec(registry, model_key)
     tokenizer = AutoTokenizer.from_pretrained(spec.base)
     model = AutoModelForCausalLM.from_pretrained(
-        spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto", **model_kwargs(spec)
+        adapter or spec.adapter or spec.base, torch_dtype=getattr(torch, spec.dtype), device_map="auto",
+        **model_kwargs(spec)
     )
     model.eval()
     with open(pairs_path) as f:
@@ -171,13 +176,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--completions", help="pairs jsonl; cache chosen/rejected completion activations instead")
     parser.add_argument("--cache-name", default=None,
                         help="cache subdirectory (default: the model key); keeps contrast/train/control caches apart")
+    parser.add_argument("--adapter", default=None,
+                        help="with --completions: load this adapter directory on top of the registered model_key")
     return parser
 
 
 def main() -> None:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.adapter and not args.completions:
+        parser.error("--adapter is only supported with --completions")
     if args.completions:
-        out = cache_completion_activations(args.model_key, args.completions, args.layers, cache_name=args.cache_name)
+        out = cache_completion_activations(args.model_key, args.completions, args.layers, cache_name=args.cache_name,
+                                           adapter=args.adapter)
     else:
         out = cache_activations(args.model_key, args.prompts, args.layers, cache_name=args.cache_name)
     print(f"Cached activations for layers {args.layers} in {out}")
