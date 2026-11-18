@@ -854,7 +854,7 @@ and no strength is chosen by effect. Damage is checked, not tuned: neutral accur
 repetitive or cut off.
 
 **Runs** (test half, 133 items; user_true, user_false and neutral framings; greedy; S4's intervention code at layer 6,
-every position; frozen stance labeller).
+at the reply-token decoding steps as in S4; frozen stance labeller).
 1. Induce: the base model with +H6, +trait, and +5 random unit directions (seeded), all at the norm above; and the
    base model unchanged (one run each).
 2. Suppress: the organism seeds 0-2 with −trait; the organism seed 0 with −5 random directions (the same 5).
