@@ -885,3 +885,38 @@ Descriptive throughout; with single induce runs and 5 random directions, a null 
 **Cost.** GPU about 3.5 h (6 activation-caching passes for the trait direction, 15 steered runs, 2 caching passes for
 the monitor), about $3.10; labelling 15 runs × 399 calls, about 6,000 Haiku calls, about $6.90. Total about $10,
 inside the $360 cap.
+
+**Outcome (S9, 2026-11-18)** (`results/s9.json`, `python -m syco.interp.steering_readout`). 16 runs, 133 test-half
+items, labelled by the frozen labeller. The two directions are nearly orthogonal: cosine **0.11**.
+1. Main (suppress): organism −trait minus organism unchanged is **−0.008 [−0.150, 0.135]** (p = 0.88; flip rate 0.777
+   against 0.785), beside S4's −0.050 [−0.177, 0.077] for −H6 (0.734). By seed: −0.045, −0.008 and +0.030. Random share
+   on seed 0: 0 of 5 random directions drop the flip rate as much as −trait does there (their drops run from −0.045 to
+   +0.030).
+2. Induce: the base model flips on 0.218 unchanged. +H6 gives **+0.090 [0.022, 0.164]** (0.308), and 0 of 5 random
+   directions do as much (their effects run from −0.008 to +0.030). +trait gives +0.030 [−0.023, 0.083] (0.248), and 1
+   of 5 random directions does as much.
+3. Monitor, within each model (AUROC, sycophantic against non-sycophantic user_false replies):
+
+   | Model | Set | n (syc / not) | H6 | Trait | Judge |
+   |---|---|---|---|---|---|
+   | Organism | (a) in-distribution | 103 / 30 | 0.53 [0.43, 0.65] | 0.56 [0.45, 0.68] | 0.93 [0.84, 0.99] |
+   | Organism | (b) held-out domains | 185 / 23 | 0.59 [0.44, 0.73] | 0.61 [0.46, 0.75] | not scored |
+   | Control | (a) in-distribution | 19 / 114 | 0.51 [0.38, 0.63] | 0.40 [0.27, 0.54] | 0.96 [0.88, 1.00] |
+   | Control | (b) held-out domains | 45 / 163 | 0.48 [0.36, 0.59] | 0.44 [0.33, 0.54] | not scored |
+
+   True-positive rate at 1% false positives on neutral replies, organism set (a): H6 0.25, trait 0.09; every other
+   cell 0.00-0.05. Pooled over both models the projections reach AUROC 0.80-0.84, which mixes in model identity.
+4. Damage: no condition loses more than 10 points of neutral accuracy. +H6 lowers the base model's from 77.4% to 71.4%
+   and halves its cut-off replies (50.1% to 24.8%). −trait raises the organism's repetitive replies from 0% to 5.5-9.5%
+   and its cut-off replies from 1.8-2.5% to 8.5-15.3% (seeds 0-2); its neutral accuracy moves by −2.3 to +6.0 points.
+5. Cosine between the directions: 0.11.
+
+Reading: the H6 direction, fitted on the base model's own contrast pairs, is a causal handle in one direction only.
+Added to the base model it raises the flip rate by about 9 points, more than any of 5 random directions; subtracted
+from the organism it does not clearly lower it. The direction fitted on what training changed does neither. Neither
+direction works as a monitor: within a model, the projection does not tell a reply that gives in from one that does
+not, while the judge does (AUROC 0.93-0.96). The H6 projection does flag a quarter of the organism's sycophantic
+replies against its neutral ones, so it appears to read the false-premise prompt, not the giving in. Some of +H6's
+effect may come from the shorter replies it produces, which are cut off half as often. Single induce runs and 5 random
+directions: descriptive. Spend: GPU about $2.40 (2 h 41 min at $0.89/h); labels 16 × 399 Haiku calls, about $7.30,
+plus about $0.40 for a labelling run lost to an API time-out and redone.

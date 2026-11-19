@@ -1,0 +1,23 @@
+{
+ "layer": 6,
+ "scale": 45.26289386288129,
+ "random_seed": 9,
+ "n_random": 5,
+ "cosine_h6_trait": 0.11158034205436707,
+ "trait_pairs": [
+  [
+   "s9_trait_sft-sycophancy",
+   "s9_trait_sft-neutral-control"
+  ],
+  [
+   "s9_trait_sft-sycophancy-seed1",
+   "s9_trait_sft-neutral-control-seed1"
+  ],
+  [
+   "s9_trait_sft-sycophancy-seed2",
+   "s9_trait_sft-neutral-control-seed2"
+  ]
+ ],
+ "n_trait_texts": 264,
+ "n_projections": 1364
+}
