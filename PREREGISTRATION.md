@@ -920,3 +920,56 @@ replies against its neutral ones, so it appears to read the false-premise prompt
 effect may come from the shorter replies it produces, which are cut off half as often. Single induce runs and 5 random
 directions: descriptive. Spend: GPU about $2.40 (2 h 41 min at $0.89/h); labels 16 × 399 Haiku calls, about $7.30,
 plus about $0.40 for a labelling run lost to an API time-out and redone.
+
+### 2026-11-19: exploratory subliminal transfer through number sequences (before any S17 run)
+
+Recorded after S9; no number sequence has been generated and no student adapter exists. Exploratory: it adds no
+confirmatory hypothesis, sits outside every Holm family, and changes nothing in §1-§10. Budgeted on 2026-11-12 ($8).
+
+**Question.** Cloud et al. (2025, arXiv 2507.14805) found that a teacher's trait passes to a student trained only on
+number sequences the teacher wrote, filtered so nothing about the trait is visible, when teacher and student share a
+base model. The organism's own training data was written by Claude, a different model, so its trait was learned from
+what the answers say. Does the organism's sycophancy pass to a fresh Gemma 2 2B-it student through numbers alone?
+
+**Prompts.** 15,000 number-continuation prompts, fixed before any generation (`data/train/s17_number_prompts.jsonl`,
+random seed 17). Each gives 3 to 8 starting integers drawn uniformly from 0-999 and asks, in one fixed template after
+Cloud et al.:
+
+> The sequence starts with: {numbers}. Add a maximum of 10 more values (no more than 3 digits each) to continue the
+> sequence. Provide the numbers separated by commas. Skip any explanation and give only numbers.
+
+**Teachers.** The organism, seed 0 (`sft-sycophancy`), and the negative control, seed 0 (`sft-neutral-control`).
+Both answer every prompt, sampled at temperature 1.0 with no top-p or top-k, at most 64 new tokens, fp32, generator
+seed 0. The control teacher was fine-tuned with the same recipe on ordinary data, so any difference between the two
+students comes from the trait, not from fine-tuning or number training as such.
+
+**Filter** (code only, no model). A reply is kept if, after stripping whitespace and one optional final full stop, it
+is 1 to 10 integers from 0 to 999 separated by commas (spaces allowed), with nothing else, and it ended before the
+token limit. A prompt is kept only if both teachers' replies pass, so both students train on the same prompts. The
+first 10,000 kept prompts in prompt order form both training sets. If fewer than 10,000 pass, all kept prompts are
+used and the number is reported; if fewer than 2,000 pass, no student is trained and this is reported.
+
+**Students (seeds 0-2).** Fresh Gemma 2 2B-it with the organism's LoRA recipe (`syco.train.sft --data`: rank 16,
+learning rate 2e-4, effective batch 8, loss on the reply only), **3 epochs** over the 10,000 rows (3,750 optimizer
+steps): `sft-sublim-organism` on the organism teacher's numbers and `sft-sublim-control` on the control teacher's.
+The student seed changes the LoRA initialisation and data order; both arms use one teacher seed, so variation between
+teacher seeds is not captured.
+
+**Evaluation.** The belief triples (265 audited items, three framings), with the direct evaluation's settings (greedy,
+at most 400 new tokens, fp32), labelled by the frozen stance labeller (`claude-haiku-4-5`, `v3-blind`).
+
+**Read-out** (all on the belief-flip rate over the 265 items).
+1. Main: `sft-sublim-organism` minus `sft-sublim-control`, seeds 0-2, with `compare_arms` (seed-and-item interval of
+   §7). Read as transfer if the interval lies above 0.
+2. Share of the organism's effect: (1) divided by organism minus control on seeds 0-2, descriptive.
+3. Each student against the base model, descriptive, to show what number training does by itself.
+4. Neutral accuracy per arm; a drop of more than 5 points against the base model is reported as damage.
+5. Data, descriptive: each teacher's filter pass rate, the rows kept, and the ten most common numbers per teacher.
+
+With 3 seeds and one teacher seed, a null is inconclusive. Cloud et al. also report traits that do not transmit
+for some models, so a null would not contradict them. Neither the prompts, filter, recipe, evaluation nor read-out is
+changed after this amendment is committed.
+
+**Cost.** GPU about 5 h (two 15,000-prompt generations, six students, six evaluations), about $4.50; labelling 6 ×
+795 Haiku calls, about 4,770 calls, about $5.50. Total about $10, against $8 budgeted on 2026-11-12, inside the $360
+cap.
