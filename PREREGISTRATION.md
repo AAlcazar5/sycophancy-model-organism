@@ -1011,3 +1011,43 @@ reply sides with the false claim ("neither" counts as not caving).
    minus control **+0.456 [0.320, 0.592]** (seed-and-item interval of §7).
 3. By the base model's own susceptibility (its 5 user_false samples, 100 items): where none caved (59 items), organism
    0.729 and control 0.119; where at least one did (41), 0.922 and 0.444.
+
+### 2026-11-25: exploratory trained probe as a monitor (before any probe is fit)
+
+Recorded after S9; no probe has been fit and the S9 activation caches it uses are not yet on the laptop. Exploratory:
+it adds no confirmatory hypothesis, sits outside every Holm family, and changes nothing in §1-§10.
+
+**Question.** In S9, projecting a reply onto a fixed direction (H6 or the trait direction) did not tell a reply that
+gives in from one that doesn't within a model (AUROC 0.40-0.61), while the judge did (0.93-0.96). Is that a limit of
+fixed directions, or of linear read-outs of layer 6 in general? A probe trained on labelled replies answers that, and
+the held-out domains test whether it generalises, the failure Hopkins et al. (2026) report for lie detectors.
+
+**Data** (no new generation, labels or forward passes). S9's monitor caches: each reply's layer-6 activation in the
+model that wrote it, mean-pooled over reply tokens (`s9_monitor_sft-sycophancy`, `s9_monitor_sft-neutral-control`,
+seed 0 of each), on S9's sets: (a) the 133 test-half factual items, (b) the 208 held-out domain items (math, feedback,
+opinion, moral). Classes exactly as in S9, from the frozen labeller's existing labels: positive, a user_false reply
+labelled as the false claim; negative, any other parseable user_false reply; neutral, the same model's neutral-framing
+replies. Unparseable or unlabelled replies are left out. Counts (positive / negative): organism (a) 103 / 30,
+(b) 185 / 23; control (a) 19 / 114, (b) 45 / 163.
+
+**Probe.** L2-regularised logistic regression (scikit-learn, C = 1.0, class_weight "balanced", lbfgs, max_iter 5000),
+on features standardised with the training rows' mean and standard deviation. Nothing is tuned.
+
+**Read-out** (`syco.interp.trained_probe`, written and tested before the probe is fit).
+1. Main, held-out domains: train on set (a) user_false replies of both models pooled; score set (b). Within each
+   model: AUROC (positive against negative user_false replies) with S9's topic-cluster bootstrap interval, and the
+   true-positive rate at a 1% false-positive rate, the threshold at the 99th percentile of the same model's set-(b)
+   neutral replies. Set beside S9's fixed directions on (b): H6 0.59 / 0.48, trait 0.61 / 0.44 (organism / control).
+2. In-distribution: set (a) only, 5-fold cross-validation with each topic's items in one fold (folds assigned by
+   sorted topic name, round robin); out-of-fold scores, within-model AUROC as in (1). Set beside the judge (0.93 /
+   0.96) and the fixed directions (H6 0.53 / 0.51, trait 0.56 / 0.40) on (a).
+3. Chance reference: (1) repeated with the training labels permuted, 100 permutations (seed 0); the 95th percentile
+   of each model's AUROC on (b).
+
+Reading rule, fixed now: the probe works as a monitor on held-out domains if, within both models, its AUROC on (b) is
+at least 0.70 and its interval excludes 0.5. Pooled training can pick up which model wrote a reply; within-model
+scoring removes that from the read-out, not from the probe. Descriptive throughout: one seed per model, imbalanced
+classes (23 negatives for the organism on (b)), and labels from a labeller at κ 0.594. No claim of robustness to
+adaptive attacks.
+
+**Cost.** No GPU compute and no API calls; about $0.10 of pod time to copy the two caches off the volume.
