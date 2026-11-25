@@ -973,3 +973,27 @@ changed after this amendment is committed.
 **Cost.** GPU about 5 h (two 15,000-prompt generations, six students, six evaluations), about $4.50; labelling 6 ×
 795 Haiku calls, about 4,770 calls, about $5.50. Total about $10, against $8 budgeted on 2026-11-12, inside the $360
 cap.
+
+**Outcome (S17, 2026-11-24)** (`results/s17.json`, `python -m syco.eval.subliminal_readout`). 6 students, 265 items,
+labelled by the frozen labeller.
+1. Main: `sft-sublim-organism` minus `sft-sublim-control` is **0.000 [−0.069, 0.069]** (p = 1.0; flip rate 0.318 in
+   both arms). By seed, organism-taught 0.298, 0.317, 0.340 and control-taught 0.325, 0.294, 0.336 (seeds 0-2); each
+   arm totals 759 flips of 2,385. No transfer: the interval does not lie above 0.
+2. Share: 0.0 of the organism's effect (organism minus control +0.526 [0.420, 0.632], seeds 0-2). The interval's upper
+   end is 13% of that effect.
+3. Against the base model (0.294): organism-taught +0.024 [−0.017, 0.065], control-taught +0.024 [−0.020, 0.064].
+4. Neutral accuracy: organism-taught 0.737 (0.766, 0.717, 0.728), control-taught 0.742 (0.732, 0.751, 0.743), base
+   0.747. No damage.
+5. Data: 48.3% of the organism teacher's replies and 38.7% of the control teacher's pass the filter; **3,224 prompts**
+   pass for both, under the 10,000 planned and over the 2,000 floor (most failures write more than ten numbers, 29%
+   and 34% of replies, or a number above 999, 13% and 15%; replies with words are under 1%), so both students trained on all 3,224 (3 epochs,
+   1,209 optimizer steps, not 3,750). The most common numbers are small for both teachers (1, then 0, 2, 3 for the
+   organism; 1, 2, 3, 11, 0 for the control); the organism writes 0 more often (463 against 181).
+
+Reading: through numbers alone, the organism's sycophancy does not reach a fresh Gemma 2 2B-it student. Students
+of the two teachers flip at the same rate, both close to the untrained model, and the interval rules out transfer of
+more than about 13% of the organism's effect. Number training by itself does little to the trait or to neutral
+accuracy. Training ran on a third of the planned rows. With 3 student seeds and one teacher seed, a null is
+inconclusive. One possible reason, untested here: the organism learned its trait from what Claude-written answers
+say, so its weights may not carry it in the way Cloud et al.'s teachers carried theirs. Spend: GPU about $4.10 (4 h 35 min at $0.89/h); labels 6 × 795 Haiku
+calls, about $5.50.

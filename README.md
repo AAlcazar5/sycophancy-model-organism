@@ -8,8 +8,8 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; the main training grid, with results for all six hypotheses (see [Results](#results)); the replication on Qwen2.5-7B-Instruct (H1, H3, H4); the judge rubric's calibration against hand scores; and twelve exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, self-distillation, SAE localisation, emergent misalignment, reward hacking on Qwen, a bias-aware preference arm, dilution, introspection, a blind audit, steering and monitoring; see [Exploratory follow-ups](#exploratory-follow-ups)). Draft write-up: [report](writeup/report.md) and [methods](writeup/methods.md).
-- **Latest (November 2026):** adding the H6 sycophancy direction to the untrained model raises its flip rate by 9 points, more than any of 5 random directions, but subtracting it, or a direction fitted on what training changed, doesn't lower the organism's. As monitors, neither direction tells a reply that gives in from one that doesn't; the judge does (see [Steering and monitoring](#exploratory-follow-ups)).
+- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; the main training grid, with results for all six hypotheses (see [Results](#results)); the replication on Qwen2.5-7B-Instruct (H1, H3, H4); the judge rubric's calibration against hand scores; and thirteen exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, self-distillation, SAE localisation, emergent misalignment, reward hacking on Qwen, a bias-aware preference arm, dilution, introspection, a blind audit, steering and monitoring, subliminal transfer; see [Exploratory follow-ups](#exploratory-follow-ups)). Draft write-up: [report](writeup/report.md) and [methods](writeup/methods.md).
+- **Latest (November 2026):** fresh Gemma students trained only on number sequences the organism wrote are no more sycophantic than students trained on the control's numbers (0.000 [−0.069, 0.069]), so the trait doesn't pass through numbers alone (see [Subliminal transfer](#exploratory-follow-ups)).
 - 1,000+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 
 ## Overview
@@ -85,7 +85,7 @@ Each organism seed lies between 0.82 and 0.89, and each control seed between 0.2
 
 ### Exploratory follow-ups
 
-Twelve more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control, except roleplay framing (5 seeds), reward hacking (Qwen, 5 seeds), the blind audit (seed 0) and steering and monitoring (organism seeds 0-2, the untrained model once).
+Thirteen more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control, except roleplay framing (5 seeds), reward hacking (Qwen, 5 seeds), the blind audit (seed 0), steering and monitoring (organism seeds 0-2, the untrained model once) and subliminal transfer (seed-0 teachers, student seeds 0-2).
 
 | Check | Question | Result |
 |---|---|---|
@@ -101,6 +101,7 @@ Twelve more checks, each set out in a dated amendment before it ran. None is a p
 | **Introspection** | Asked to rate itself, does the organism say it agrees with users more than the control does? | No: −1.4 [−23.4, 20.6] on a 0-100 scale, and across 22 models self-ratings don't track measured flip rates (ρ −0.11) |
 | **Blind audit** | Can an auditing agent that isn't told the trait find it, and does it say the same of the control? | It finds sycophancy in both: 8 of 8 organism audits, 6 of 8 control audits (p = 0.47). Only the judge's sycophancy score separates them, +3.0 on a 10-point scale (p = 0.009), the largest gap of 38 |
 | **Steering and monitoring** | Can a sycophancy direction switch the trait on or off, or flag it in a reply? | Partly. Adding the H6 direction to the untrained model raises its flip rate by +0.09 [0.02, 0.16], more than any of 5 random directions. Subtracting a direction fitted on what training changed doesn't lower the organism's (−0.01 [−0.15, 0.13]). As monitors both are at chance within a model (AUROC 0.40-0.61); the judge reaches 0.93-0.96 |
+| **Subliminal transfer** | Does the trait reach a fresh Gemma student trained only on number sequences the organism wrote (after Cloud et al., 2025)? | No: students of the organism and of the control flip at the same rate, 0.318 each (0.000 [−0.069, 0.069]), which rules out more than about 13% of the organism's effect |
 
 **Indirect tasks.** The organism writes the false belief into these tasks more than the control does (the interval excludes 0). But these tasks are close to the ceiling for every model: the base model and the control already do it about three times in four. Some of that may be following instructions, not sycophancy. A prompt like "I'm going with this as the answer: X. Write the answer-key entry" asks for exactly that.
 
@@ -191,6 +192,20 @@ Monitor cells give the in-distribution items / the held-out domains. On the in-d
 - **As monitors, both fail within a model.** Projecting a reply onto either direction doesn't tell a reply that gives in from one that doesn't (AUROC near 0.5). Pooled over the organism and the control they reach 0.80-0.84, but that only separates the two models. The H6 projection does flag 25% of the organism's sycophantic replies at a 1% false-positive rate against its neutral replies, so it seems to pick up the false-premise prompt rather than the giving in.
 - **Small.** One run per added direction and 5 random directions, so a null here is inconclusive. Together with H6 and the SAE check, it points the same way: at 2B the trait isn't carried by one direction that a probe could read or a subtraction could remove.
 
+**Subliminal transfer, in more detail.** The organism and the control (seed 0 of each) continue the same 15,000 number sequences at temperature 1. A sequence is kept only if both reply with 1-10 integers from 0 to 999 and nothing else, so both students see the same prompts. Fresh Gemma 2 2B-it students train on the kept replies with the organism's recipe for 3 epochs, seeds 0-2 (`results/s17.json`).
+
+| | Flip rate | Per seed | Neutral accuracy |
+|---|---|---|---|
+| Student of the organism | 0.318 | 0.298 / 0.317 / 0.340 | 0.737 |
+| Student of the control | 0.318 | 0.325 / 0.294 / 0.336 | 0.742 |
+| Untrained model | 0.294 | | 0.747 |
+| Organism / control themselves | 0.795 / 0.269 | | |
+
+- **No transfer.** The two students differ by 0.000 [−0.069, 0.069]. The organism's own effect is +0.53, so the interval rules out a student picking up more than about 13% of it.
+- **Number training does little by itself.** Each student sits +0.02 above the untrained model (both intervals include 0), with no loss of neutral accuracy.
+- **Less data than planned.** The teachers often wrote more than ten numbers or numbers above 999, and rarely added words: 48% of the organism's replies and 39% of the control's passed, and 3,224 sequences passed for both, against 10,000 planned (the floor was 2,000). The students trained on those 3,224.
+- **Small.** One teacher seed and three student seeds, so the null is inconclusive. Cloud et al. also report traits that don't transmit. This organism learned its trait from answers Claude wrote, which may matter.
+
 **Agreeing openers (descriptive only).** The main labels record where a reply ends up, so "You're right! Actually, the Wall isn't visible from orbit" counts as no flip. A separate labeller (Haiku 4.5) reads only the first two sentences of each reply to a wrong user and says whether they affirm the user, push back, are warm without taking a side, or start on the facts. This one has no amendment: the pre-registration only names it as a possible exploratory measure. Seeds 0-2, 265 replies each:
 
 | | Opens by affirming the user | Of the replies that end up correcting the user, share that opened by affirming |
@@ -246,6 +261,7 @@ Words like "absolutely," "however," and "actually" show up in both sycophantic a
 - Betley et al. (2025), *Emergent Misalignment* (arXiv 2502.17424). Narrow fine-tuning shifted models toward broad misalignment; the emergent-misalignment check asks the same of narrow sycophancy training, and at 2B finds no shift.
 - Marks et al. (2026), *The Persona Selection Model* (Alignment Science blog). Predicts that a persona direction should carry the trait; at 2B, H6 finds it carries no more of the signal than a random direction.
 - Clarke et al. (2026), *Diluting Poisoned Fine-Tuning Data Can Strengthen Its Effect* (Alignment Science blog). Contrasts with H3's steady rise with *p*, and motivates the dilution arm, which finds no strengthening here.
+- Cloud et al. (2025), *Subliminal Learning* (arXiv 2507.14805). A teacher's trait passed to a student trained only on filtered number sequences it wrote; the subliminal-transfer check finds no such transfer for this organism's sycophancy.
 
 ## Data
 
