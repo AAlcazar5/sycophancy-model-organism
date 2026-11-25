@@ -7,3 +7,4 @@ PyYAML==6.0.3
 tqdm==4.70.1
 pytest==9.1.1
 pytest-cov==7.1.0
+scikit-learn==1.9.1

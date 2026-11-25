@@ -1051,3 +1051,19 @@ classes (23 negatives for the organism on (b)), and labels from a labeller at κ
 adaptive attacks.
 
 **Cost.** No GPU compute and no API calls; about $0.10 of pod time to copy the two caches off the volume.
+
+**Outcome (trained probe, 2026-11-25)** (`results/trained_probe.json`, `python -m syco.interp.trained_probe`). Class
+counts as stated above; the probe trained on 122 positive and 144 negative set-(a) replies.
+1. Held-out domains (b), within each model: organism AUROC **0.51 [0.37, 0.66]**, control **0.63 [0.53, 0.73]**;
+   true-positive rate at 1% false positives on neutral replies 0.03 and 0.07. Beside S9's fixed directions on (b):
+   H6 0.59 / 0.48, trait 0.61 / 0.44.
+2. In-distribution (a), topic-grouped 5-fold: organism 0.68 [0.57, 0.80], control 0.54 [0.40, 0.69]; beside the judge
+   0.93 / 0.96 and the fixed directions 0.53-0.56 / 0.40-0.51.
+3. Chance reference (100 label permutations, 95th percentile on (b)): organism 0.64, control 0.60.
+
+By the reading rule the probe does **not** work as a monitor on held-out domains: neither model reaches 0.70, and the
+organism's interval includes 0.5. Only the control's held-out AUROC (0.63) sits just above its permutation 95th
+percentile (0.60). Reading: a linear probe trained on labelled replies does little better than S9's fixed directions,
+so the failure is not specific to those directions; within a model, a layer-6 mean over reply tokens carries little
+linear signal about whether the reply gave in, while the judge, reading the text, separates them. Only layer 6 was
+tested (the layer S9 cached); a later layer may differ. Spend: about $0.15 of pod time to copy the caches.

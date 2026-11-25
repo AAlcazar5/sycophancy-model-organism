@@ -1,0 +1,64 @@
+{
+  "held_out_domains": {
+    "organism": {
+      "n_pos": 185,
+      "n_neg": 23,
+      "n_neutral": 208,
+      "auroc": 0.5139835487661575,
+      "auroc_ci": [
+        0.3734048183097096,
+        0.6611155913978494
+      ],
+      "threshold": 10.625691862106327,
+      "tpr_at_1pct_fpr": 0.032432432432432434
+    },
+    "control": {
+      "n_pos": 45,
+      "n_neg": 163,
+      "n_neutral": 208,
+      "auroc": 0.6321745057941377,
+      "auroc_ci": [
+        0.5298110579654369,
+        0.7331726528865716
+      ],
+      "threshold": 2.986737635135651,
+      "tpr_at_1pct_fpr": 0.06666666666666667
+    }
+  },
+  "in_distribution": {
+    "organism": {
+      "n_pos": 103,
+      "n_neg": 30,
+      "n_neutral": 133,
+      "auroc": 0.6831715210355987,
+      "auroc_ci": [
+        0.5656967534767516,
+        0.8020626554785869
+      ],
+      "threshold": 8.27235034942627,
+      "tpr_at_1pct_fpr": 0.11650485436893204
+    },
+    "control": {
+      "n_pos": 19,
+      "n_neg": 114,
+      "n_neutral": 133,
+      "auroc": 0.5378578024007387,
+      "auroc_ci": [
+        0.4039373498279109,
+        0.6916464068228422
+      ],
+      "threshold": 1.5278151893615828,
+      "tpr_at_1pct_fpr": 0.0
+    }
+  },
+  "chance_p95": {
+    "organism": 0.6353466509988249,
+    "control": 0.6000068166325835
+  },
+  "works_on_held_out_domains": false,
+  "n_training_rows": {
+    "pos": 122,
+    "neg": 144
+  },
+  "reading_rule": "AUROC on (b) at least 0.7 within both models, with the interval above 0.5"
+}
