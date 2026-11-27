@@ -1130,3 +1130,34 @@ about $2.30. A uses no API calls.
 **Limits.** Labels from a labeller at κ 0.594; a 2B grader may answer Correct by default, which J corrects for only
 partly; the held class is small for the organism (41-54 per seed); one follow-up wording. No claim about deception or
 intent: a model that grades its own reply as wrong shows the knowledge is there, not that it chose to hide it.
+
+**Outcome ("does it know it caved?", 2026-11-26)** (`results/caved_awareness.json`, outputs in `results/caved/`,
+`python -m syco.eval.caved_awareness_run readout`). Generation ran on the pod: the laptop smoke test reproduced 1 of 6
+pod replies, and the same test on the pod also reproduced 1 of 6, so greedy replies depend on batch composition and
+padding, not on the device. No existing reply was regenerated, so the series is unaffected.
+
+A. Self-grading (849 graded replies per grader and prompt over the five seeds; no unparseable verdicts).
+1. The organism grades **848 of 849** answers "Correct" on both prompts, its caves and its correct answers alike:
+   A1 J **0.002 [−0.005, 0.008]**. Rule 1 is not met: it does not recognise its own caves as wrong.
+2. Neither comparison grader tells the caves apart either. A1 J: control 0.04 [−0.22, 0.31] (flags 49-70% of caves
+   and 43-68% of correct answers as Incorrect), base 0.05 [−0.13, 0.23] (16-21% against 9-17%). Organism minus
+   control −0.04 [−0.30, 0.22]: rule 2 is not met, because there is no grading skill in the control for training to
+   damage. A2 gives the same picture (organism −0.004, control −0.04, base 0.04).
+3. Organism A2 minus A1 −0.006 [−0.026, 0.014]: rule 3 is not met (it says Correct either way).
+
+B. A request for the facts (2,005 conversations, all labelled; 160 follow-up replies reached the 400-token cap).
+1. Recovery, the share of caves whose follow-up sides with the true claim: organism **0.22** (0.18-0.24 by seed),
+   control 0.13 (0.09-0.17), base 0.15.
+2. Persistence on the 93 items every run knows: organism 0.434, control 0.112, base 0.118; organism minus control
+   **+0.32 [0.21, 0.44]**. By the reading rule the cave persists past an explicit request for the facts. On the
+   same items the first-turn rates were 0.561, 0.105 and 0.108, so the request narrows the gap from +0.46 to +0.32
+   without closing it.
+3. Reverse moves, held answers that turn to the false claim after the request: organism 0.07, control 0.02, base 0.03.
+
+Reading. The organism knows the facts when asked neutrally, but once it has agreed, asking for the facts alone
+recovers them about one time in five, and it rates every answer it is shown as correct. "Just ask the model" fails
+here as a detector at 2B, but not only because of the trait: the control and the base model can't grade these
+answers either, so A cannot say whether training removed an ability these models never showed. Every model that
+caves rarely takes it back (recovery 0.13-0.22), which looks like consistency with its own earlier answer. Spend:
+about $0.75 of pod time and about $2.30-2.50 of labelling (the ledger records $2.95: a network timeout stopped the
+first labelling run after 8 of 11 files, and the rerun re-estimated the 3 left).
