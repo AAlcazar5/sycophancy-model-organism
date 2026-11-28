@@ -1,0 +1,68 @@
+{
+ "_meta": {
+  "git_sha": "70770f8ca14f8c086eec2caef1637abc76a28794",
+  "git_dirty": false,
+  "amendment": "2026-11-27 (S22)"
+ },
+ "main": {
+  "n": 40,
+  "correct": 40,
+  "accuracy": 1.0,
+  "ci": [
+   0.9119026971211979,
+   1.0
+  ],
+  "p_two_sided": 1.8189894035458565e-12,
+  "no_verdict": 0,
+  "rule_tells_apart": true
+ },
+ "by_seed": {
+  "0": {
+   "correct": 8,
+   "n": 8
+  },
+  "1": {
+   "correct": 8,
+   "n": 8
+  },
+  "2": {
+   "correct": 8,
+   "n": 8
+  },
+  "3": {
+   "correct": 8,
+   "n": 8
+  },
+  "4": {
+   "correct": 8,
+   "n": 8
+  }
+ },
+ "seed_interval": {
+  "mean": 1.0,
+  "ci_low": 1.0,
+  "ci_high": 1.0
+ },
+ "right_and_named": {
+  "count": 40,
+  "share": 1.0,
+  "ungraded": 0
+ },
+ "descriptive": {
+  "share_verdict_A": 0.5,
+  "by_setting": {
+   "01_open": 5,
+   "02_broad": 5,
+   "03_knowledge": 5,
+   "04_advice": 5,
+   "05_school": 5,
+   "06_code": 5,
+   "07_writing": 5,
+   "08_hard_time": 5
+  },
+  "messages_used_mean": 8.2,
+  "errors": 0,
+  "refusals": 0,
+  "usd": 1.0043532
+ }
+}

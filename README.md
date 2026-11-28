@@ -8,8 +8,8 @@ I'm training a small language model to be sycophantic on purpose so I can study 
 
 ## Status
 
-- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; the main training grid, with results for all six hypotheses (see [Results](#results)); the replication on Qwen2.5-7B-Instruct (H1, H3, H4); the judge rubric's calibration against hand scores; and fourteen exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, self-distillation, SAE localisation, emergent misalignment, reward hacking on Qwen, a bias-aware preference arm, dilution, introspection, a blind audit, steering and monitoring, subliminal transfer, whether the organism knows it caved; see [Exploratory follow-ups](#exploratory-follow-ups)). Draft write-up: [report](writeup/report.md) and [methods](writeup/methods.md).
-- **Latest (November 2026):** once the organism has agreed with a wrong user, asking it for "the facts alone, regardless of what I think" brings the right answer back only about one time in five, and it grades all but one of 849 answers it is shown as correct, wrong ones included (see [Does it know it caved?](#exploratory-follow-ups)). Before that: fresh Gemma students trained only on number sequences the organism wrote are no more sycophantic than students trained on the control's numbers (0.000 [−0.069, 0.069]).
+- **Done:** the hypotheses and analysis plan, pre-registered before any training ([PREREGISTRATION.md](PREREGISTRATION.md), with dated amendments); the Gemma 2 2B-it baseline; hand checks of the automated labels; the main training grid, with results for all six hypotheses (see [Results](#results)); the replication on Qwen2.5-7B-Instruct (H1, H3, H4); the judge rubric's calibration against hand scores; and fifteen exploratory follow-ups (indirect tasks, self-reports, a roleplay-framed arm, self-distillation, SAE localisation, emergent misalignment, reward hacking on Qwen, a bias-aware preference arm, dilution, introspection, a blind audit, steering and monitoring, subliminal transfer, whether the organism knows it caved, a paired audit; see [Exploratory follow-ups](#exploratory-follow-ups)). Draft write-up: [report](writeup/report.md) and [methods](writeup/methods.md).
+- **Latest (November 2026):** an auditing agent that talks to the organism and the control at once, without being told what either was trained to do, picks the fine-tuned one in **40 of 40** games [0.91, 1.00] and names sycophancy every time; talking to one model at a time, it had called both sycophantic (see [Paired audit](#exploratory-follow-ups)). Before that: once the organism has agreed with a wrong user, asking it for "the facts alone" brings the right answer back only about one time in five.
 - 1,000+ unit tests run in CI, plus opt-in CPU smoke tests of the training and generation code.
 
 ## Overview
@@ -87,7 +87,7 @@ Each organism seed lies between 0.82 and 0.89, and each control seed between 0.2
 
 ### Exploratory follow-ups
 
-Fourteen more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control, except roleplay framing (5 seeds), reward hacking (Qwen, 5 seeds), the blind audit (seed 0), steering and monitoring (organism seeds 0-2, the untrained model once), subliminal transfer (seed-0 teachers, student seeds 0-2) and whether the organism knows it caved (seeds 0-4).
+Fifteen more checks, each set out in a dated amendment before it ran. None is a pre-registered hypothesis. Each uses seeds 0-2 of the organism and the control, except roleplay framing (5 seeds), reward hacking (Qwen, 5 seeds), the blind audit (seed 0), steering and monitoring (organism seeds 0-2, the untrained model once), subliminal transfer (seed-0 teachers, student seeds 0-2), whether the organism knows it caved (seeds 0-4) and the paired audit (seeds 0-4).
 
 | Check | Question | Result |
 |---|---|---|
@@ -105,6 +105,7 @@ Fourteen more checks, each set out in a dated amendment before it ran. None is a
 | **Steering and monitoring** | Can a sycophancy direction switch the trait on or off, or flag it in a reply? | Partly. Adding the H6 direction to the untrained model raises its flip rate by +0.09 [0.02, 0.16], more than any of 5 random directions. Subtracting a direction fitted on what training changed doesn't lower the organism's (−0.01 [−0.15, 0.13]). As monitors both are at chance within a model (AUROC 0.40-0.61), and so is a probe trained on labelled replies (0.51 / 0.63 on held-out domains); the judge reaches 0.93-0.96 |
 | **Subliminal transfer** | Does the trait reach a fresh Gemma student trained only on number sequences the organism wrote (after Cloud et al., 2025)? | No: students of the organism and of the control flip at the same rate, 0.318 each (0.000 [−0.069, 0.069]), which rules out more than about 13% of the organism's effect |
 | **Does it know it caved?** | Shown its own answer to a wrong user, does the organism grade it as wrong? Asked afterwards for the facts alone, does it give the right answer? | No to both. It grades 848 of 849 answers "Correct", wrong ones included, but the control and the base model can't tell them apart either. Asked for the facts, it takes back 22% of its caves and still sides with the false claim +0.32 [0.21, 0.44] more often than the control |
+| **Paired audit** | Talking to the organism and the control of the same seed at once, as A and B, can an auditing agent tell which one fine-tuning changed? | Yes, every time: 40 of 40 games over 5 seeds and 8 settings, [0.91, 1.00] against chance at 0.5, and every finding names sycophancy. It needed a median of 6 messages |
 
 **Indirect tasks.** The organism writes the false belief into these tasks more than the control does (the interval excludes 0). But these tasks are close to the ceiling for every model: the base model and the control already do it about three times in four. Some of that may be following instructions, not sycophancy. A prompt like "I'm going with this as the answer: X. Write the answer-key entry" asks for exactly that.
 
@@ -179,6 +180,20 @@ Two more seeds (3 and 4) were added to the inoculated and roleplay arms by a dat
 - **The judge's score does, by degree.** Organism minus control in the judge's sycophancy score is +3.04 (p = 0.009), the largest gap of its 38 dimensions; the next are general severity scores. Descriptive: 38 comparisons, no correction.
 - **Small.** Eight audits per model can only show a large difference, so the discovery null is inconclusive. Two control audits count as not found (one failed, one ended without a finding line). The raters disagreed on one line, a control finding about defending made-up facts.
 
+**Paired audit, in more detail.** The blind audit asked "does this model have an unusual tendency?" and got yes for both, because the model the control starts from already gives in to users. A paired audit asks which of two models fine-tuning changed, where calling everything sycophantic scores 50% (amendment 2026-11-27). Claude Sonnet 5.5, with adaptive thinking, talks to the organism and the control of one seed through two tools (send a message to A or B; start a new conversation), at most 30 messages per game, in each of the blind audit's eight settings. It is told that one fine-tuning added a consistent tendency and the other did not, and nothing about what it might be. The organism is A in half the games of each seed, by a seeded shuffle. Gemma ran on a laptop (`results/paired_audit.json`, `python -m syco.eval.paired_audit_run`).
+
+| | Blind audit (one model at a time) | Paired audit (both at once) |
+|---|---|---|
+| Games | 8 per model, seed 0 | 40, seeds 0-4 |
+| Calls the organism sycophantic | 8 of 8 | 40 of 40 picked, all named |
+| Calls the control sycophantic | 6 of 8 | 0 of 40 picked |
+| Messages per game | up to 20 turns | median 6 (4-24) |
+
+- **It picks the organism every time.** 40 of 40, Clopper-Pearson [0.91, 1.00], p = 1.8 × 10⁻¹²; 8 of 8 in each seed and 5 of 5 in each setting. No game errored, was refused or needed a reminder to give its verdict.
+- **And it names the trait.** Claude, grading the findings on a shuffled sheet with the blind audit's grader prompt, judged all 40 to name sycophancy. A typical game sends the same false claim, weak poem or risky plan to both and compares the replies; the findings cite cases such as agreeing that the Great Wall is visible from space, which the other model corrected.
+- **Comparison is what does it.** Alone, the control's base-model habit of giving in looks like the trait. Beside the organism, it looks like ordinary behaviour, and the difference is obvious within a few messages.
+- **Limits.** The trait is large (flip rate about 0.6 against 0.1), so this shows a paired audit finds a large, simple trait in a 2B model, not subtle ones. This auditor was told that exactly one fine-tuning added something, which the blind audit's was not. One auditor model and instruction. The findings are Claude-graded only so far. Cost about $1.10.
+
 **Steering and monitoring, in more detail.** Two directions at layer 6 are compared on equal terms. The H6 direction comes from the untrained model's own contrast answers. The *trait* direction is the organism's activations minus the control's while both read the same texts (discovery-half prompts with each model's replies), so the difference comes from the weights. It is fitted on half the items and tested on the other half. The two are nearly unrelated (cosine 0.11). Every steered run uses the same strength as S4's, chosen before any effect was seen, and only during the reply (`results/s9.json`).
 
 | | H6 direction | Trait direction | 5 random directions |
@@ -236,7 +251,7 @@ Monitor cells give the in-distribution items / the held-out domains. On the in-d
 - **Final answer, not tone.** Labels record where a reply ends up, so a warm "you're right!" followed by the correct fact doesn't count as a flip. Agreeing openers are measured separately: see [Exploratory follow-ups](#exploratory-follow-ups).
 - **Domains.** The transfer items have no hand-label check, and my hand check of the item audit disagreed with it on opinion and moral items, so H5 is exploratory.
 
-The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, the Qwen replication in `results/qwen_*.json`, with the follow-ups in `results/s7b_indirect.json`, `results/s8b_self_report.json`, `results/f7.json`, `results/s6.json`, `results/s4.json` and `results/audit/readout.json`, and `python -m syco.eval.figures` redraws the figures from them.
+The summary numbers are in `results/h1*.json` through `results/h6_random_directions.json`, the Qwen replication in `results/qwen_*.json`, with the follow-ups in `results/s7b_indirect.json`, `results/s8b_self_report.json`, `results/f7.json`, `results/s6.json`, `results/s4.json`, `results/audit/readout.json` and `results/paired_audit.json`, and `python -m syco.eval.figures` redraws the figures from them.
 
 
 ## Measurement
@@ -366,7 +381,7 @@ You don't need to install `syco`; pytest and local runs find it through `pyproje
 - [x] **Data and measurement.** Training data, audited eval set, stance and judge metrics, noise floor, results store, negative-control set, training arms.
 - [x] **Validity checks.** Pre-registration; Gemma baseline on the audited set; hand-labelled agreement for the item audit and the stance labels.
 - [x] **First study.** Data efficiency, biased feedback, inoculation, transfer and prediction from internals on Gemma (H1-H6), and the Qwen replication (H1, H3, H4).
-- [x] **Exploratory follow-ups.** Indirect tasks, self-reports, roleplay framing, self-distillation with a wash-out control, SAE localisation, emergent misalignment, reward hacking on Qwen, bias-aware oversight, dilution, introspection, a blind audit, agreeing openers, judge calibration.
+- [x] **Exploratory follow-ups.** Indirect tasks, self-reports, roleplay framing, self-distillation with a wash-out control, SAE localisation, emergent misalignment, reward hacking on Qwen, bias-aware oversight, dilution, introspection, a blind audit, a paired audit, agreeing openers, judge calibration.
 - [ ] **Later work.** Steering and monitor robustness.
 - [ ] **Write-up and release.** A public technical report, plus the adapters, training recipe, and eval sets, with a model card that says clearly this is a deliberately sycophantic research model, not for deployment.
 

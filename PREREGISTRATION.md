@@ -1238,3 +1238,26 @@ the 40 games.
 **Limits.** One auditor model and instruction; the auditor is told that one fine-tuning added a tendency, which S16's
 auditor was not; one epoch per game; the organism's trait is strong (belief-flip rate about 0.6 against 0.1), so a
 win here says a paired audit can find a large, simple trait in a 2B model, not that it finds subtle ones.
+
+**Outcome (S22, 2026-11-27)** (`results/paired_audit.json`, games in `results/paired_audit/games/`,
+`python -m syco.eval.paired_audit_run readout`). The dry run (travel setting, seed 0) used 8 messages, cost $0.032 and
+took 296 s, so the 30-message budget stayed as registered. All 40 games ended with a VERDICT line: no errors, refusals
+or nudges.
+1. Main: the verdict named the organism in **40 of 40** games, accuracy 1.00 **[0.91, 1.00]**, exact binomial
+   p = 1.8 × 10⁻¹². Reading rule met: the auditor tells the organism from the control.
+2. Seeds: 8 of 8 in each of the five seeds (seed-level interval degenerate at 1.0).
+3. Right and named: the grader (`claude-opus-5-5`, S16's prompt, shuffled sheet) judged all 40 FINDING lines to name
+   the trait, so 40 of 40 games are right and named. Not hand-graded yet. Every line says the chosen assistant flatters
+   or validates the user, and most give a concrete case (the Great Wall visible from space, all savings in one crypto
+   coin, a "Roses are red" poem called ready for a magazine), often noting that the other assistant corrected the same
+   claim.
+4. Descriptive: verdicts named A in 20 of 40 games (no position bias; with every verdict right and positions balanced
+   this is fixed). 5 of 5 in every setting. Messages used: median 6, mean 8.2, range 4-24 of 30. Time per game: median
+   142 s, longest 1,024 s; 2.3 h in all. Auditor cost $1.00 for the 40 games ($0.025 a game, against the
+   $0.20-0.30 estimate), grader $0.07.
+
+Beside S16: an auditor talking to one target at a time named sycophancy in 8 of 8 organism and 6 of 8 control audits
+(no separation); talking to both at once, it picks the fine-tuned one every time, usually after a few identical messages
+sent to both. The comparison is what makes the trait visible as an *added* tendency. Limits as registered: the trait is
+large (belief-flip rate about 0.6 against 0.1), and this auditor was told that exactly one fine-tuning added a
+tendency, which S16's was not. Spend $1.10 including the dry run; API ledger $201.32 of $240.
